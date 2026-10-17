@@ -2,8 +2,7 @@ import { Routes } from 'discord.js';
 
 export function channelStatusText(s) {
   if (s.closed || !s.current || !s.hasStarted) return null;
-  const paused = ['paused', 'autopaused'].includes(s.player.state.status);
-  return `${paused ? '⏸️ 已暫停｜' : '🎵 正在播放｜'}${s.current.title || 'YouTube'}`.replace(/\s+/g, ' ').slice(0, 500);
+  return String(s.current.title || 'YouTube').replace(/\s+/g, ' ').slice(0, 500);
 }
 
 export function syncChannelStatus(s) {
