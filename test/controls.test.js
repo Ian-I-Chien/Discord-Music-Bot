@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enqueueTrack, setVolume, MAX_QUEUE } from '../src/controls.js';
+import { enqueueTrack, setVolume, MAX_QUEUE, playlistImportLimit, applyVolumeCommand } from '../src/controls.js';
 import { commands } from '../src/commands.js';
 test('playnext prioritizes one track without interrupting current playback', () => {
   const s={queue:[{title:'A'},{title:'B'}],current:{title:'Playing'},queuePage:3};
@@ -23,4 +23,23 @@ test('volume and playnext slash commands have required bounded options', () => {
   const option=commands.find(c=>c.name==='volume').options[0];
   assert.equal(option.min_value,0); assert.equal(option.max_value,100); assert.equal(option.required,true);
   assert.equal(commands.find(c=>c.name==='playnext').options[0].name,'link');
+});
+
+test('Mix imports only twenty recommendations within the shared queue capacity',()=>{
+ const mix='https://www.youtube.com/watch?v=h7MYJghRWt0&list=RDh7MYJghRWt0';
+ assert.equal(playlistImportLimit(mix,0),20);
+ assert.equal(playlistImportLimit(mix,295),5);
+ assert.equal(playlistImportLimit(mix,300),0);
+ assert.equal(playlistImportLimit('https://www.youtube.com/playlist?list=PLabc',0),300);
+});
+
+test('volume joins once when disconnected and applies before playback', async()=>{
+ let joins=0; const state={queue:[],current:null,loading:false};
+ const connect=async()=>{joins++;return state;};
+ assert.equal(await applyVolumeCommand(null,30,connect),state);
+ assert.equal(joins,1);assert.equal(state.volume,30);assert.equal(state.showIdlePanel,true);
+ let applied;state.current={title:'Playing'};state.resource={volume:{setVolume(v){applied=v;}}};
+ await applyVolumeCommand(state,55,connect);assert.equal(joins,1);assert.equal(applied,0.55);
+ assert.equal(state.showIdlePanel,false);
+ await assert.rejects(()=>applyVolumeCommand(null,101,connect));assert.equal(joins,1);
 });

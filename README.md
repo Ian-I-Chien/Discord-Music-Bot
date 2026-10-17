@@ -13,7 +13,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 - A compact public Now Playing card with artwork, track link, artist or uploader, elapsed time, duration, and playback controls. Upcoming tracks are shown only on demand through `/queue` or the queue button, in a shared public paginated view with eight tracks per page. The queue stays hidden until requested and replaces the current-track view in the same shared message. A new track automatically restores Now Playing; `/now-playing` and the return button also restore it.
 - Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every second during playback and stops refreshing while paused. Pending edits are coalesced when Discord throttles updates.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
-- Up to 300 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
+- Up to 300 queued tracks and automatic disconnect after three idle minutes once the current track and waiting queue have finished. Commands from the same voice channel reset this idle countdown; new playback cancels it. Controls require membership in the bot's voice channel.
 - Supports live volume adjustment (0–100%). The test branch decodes and re-encodes Opus to apply volume, adding CPU work compared with the production passthrough path.
 
 ## Development and environments
@@ -66,7 +66,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
 | `/playnext link:<URL or song name>` | Insert a single track at the front of the waiting queue without interrupting the current song |
-| `/volume percent:<0–100>` | Set playback volume immediately; 0 mutes, 100 is original level |
+| `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/skip` | Skip the current track |
@@ -74,7 +74,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | `/queue` | Open the shared, paginated view of upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import a finite snapshot of currently available recommendations; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 
