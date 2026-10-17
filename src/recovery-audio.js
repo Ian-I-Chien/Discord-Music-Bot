@@ -4,10 +4,10 @@ import { createAudioResource, StreamType } from '@discordjs/voice';
 import { resolveTrack } from './source.js';
 
 export async function openRecoveryAudio(s, track, offset, signal, attempt) {
-  // First reconnect to the current URL; later attempts refresh expired source URLs.
-  const source = attempt === 1 ? track : await resolveTrack(track.page, { signal });
+  // Retry the known URL first; refreshing metadata can consume most of the short budget.
+  const source = attempt <= 2 ? track : await resolveTrack(track.page, { signal });
   signal.throwIfAborted();
-  const child = spawn('ffmpeg', ['-nostdin', '-loglevel', 'error', '-rw_timeout', '3000000',
+  const child = spawn('ffmpeg', ['-nostdin', '-loglevel', 'error', '-rw_timeout', '3000000', '-analyzeduration', '0', '-probesize', '32768',
     '-ss', String(offset), '-i', source.url, '-vn', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'],
   { stdio: ['ignore', 'pipe', 'pipe'] });
   // FFmpeg errors can contain signed URLs; keep those out of logs.
