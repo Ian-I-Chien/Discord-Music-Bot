@@ -13,12 +13,16 @@ export function normalizeQuery(input) {
   if (!id || !/^[\w-]{11}$/.test(id)) throw new Error('請提供單一 YouTube 影片網址；暫不支援歌單。');
   return `https://www.youtube.com/watch?v=${id}`;
 }
-export function resolveTrack(query) {
+export function resolveTrack(query, { signal } = {}) {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.YTDLP_PATH || 'yt-dlp', ['--ignore-config', '--no-playlist', '--no-warnings', '--js-runtimes', 'node', '--socket-timeout', '15', '-f', 'bestaudio[acodec=opus][ext=webm]', '--dump-single-json', '--', normalizeQuery(query)], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; let settled = false;
-    const finish = (error, data) => { if (settled) return; settled = true; clearTimeout(timer); error ? reject(error) : resolve(data); };
+    const cancel = () => { child.kill('SIGKILL'); finish(signal.reason || new Error('Source lookup cancelled')); };
+    const finish = (error, data) => { if (settled) return; settled = true; clearTimeout(timer); signal?.removeEventListener('abort', cancel); error ? reject(error) : resolve(data); };
     const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new Error('YouTube 解析逾時，請稍後重試。')); }, 60000);
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
     child.stdout.on('data', chunk => { out += chunk; if (out.length > 8_000_000) { child.kill('SIGKILL'); finish(new Error('音源回應過大。')); } });
     child.stderr.resume();
     child.on('error', () => finish(new Error('無法執行 yt-dlp，請檢查安裝及 YTDLP_PATH。')));

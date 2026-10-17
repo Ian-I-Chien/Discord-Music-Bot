@@ -136,3 +136,9 @@ Tests cover input validation, global command registration, embed payloads, time 
 `.gitignore` excludes `.env`, `.env.*`, dependencies, Python environments, logs, and backups. Only the empty `.env.example` template is tracked. Never put tokens in source code, screenshots, commits, or this README. Reset an exposed token immediately in the Developer Portal.
 
 Invoking `/now-playing` posts a new active playback panel at the latest position in chat, preserving the track, elapsed time, volume and queue. Controls on the previous panel are removed.
+
+### Stream recovery
+
+Premature endings and player errors retain the current track and queue while the bot reconnects. Recovery makes at most three attempts within a shared ten-second budget; it seeks to the saved playback position and preserves volume. Failed recovery advances once to the next track. Skip and leave cancel pending recovery. Playback progress includes the resumed offset. Recovery diagnostics stay in service logs. Reconnection can repeat or skip a small amount of audio and is not guaranteed to be seamless.
+
+The queue panel return button switches back to the player on the same message. Only an explicit `/now-playing` command posts a replacement panel at the latest chat position.
