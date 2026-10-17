@@ -148,3 +148,5 @@ The queue panel return button switches back to the player on the same message. O
 When no human listeners remain in the bot voice channel, a separate three-minute countdown starts even while music is playing or queued. A human returning cancels the countdown; another departure starts a new countdown. Other bots and mute/deafen changes do not reset it. On timeout the bot stops playback, clears the queue and leaves. The existing three-minute idle timeout after playback ends also remains active.
 
 When a new track starts, the bot posts a new active playback panel and then deletes the previous active panel. Pause/resume and reconnecting the same track keep the existing message. If sending fails the original remains; if deletion fails its controls are removed.
+
+Automatic progress refreshes skip ticks while a panel request is pending. This lets the request finish under Discord rate limits so queue, pause/resume and other user controls can proceed.
