@@ -142,3 +142,7 @@ Invoking `/now-playing` posts a new active playback panel at the latest position
 Premature endings and player errors retain the current track and queue while the bot reconnects. Recovery makes at most three attempts within a shared ten-second budget; it seeks to the saved playback position and preserves volume. Failed recovery advances once to the next track. Skip and leave cancel pending recovery. Playback progress includes the resumed offset. Recovery diagnostics stay in service logs. Reconnection can repeat or skip a small amount of audio and is not guaranteed to be seamless.
 
 The queue panel return button switches back to the player on the same message. Only an explicit `/now-playing` command posts a replacement panel at the latest chat position.
+
+### Empty voice channels
+
+When no human listeners remain in the bot voice channel, a separate three-minute countdown starts even while music is playing or queued. A human returning cancels the countdown; another departure starts a new countdown. Other bots and mute/deafen changes do not reset it. On timeout the bot stops playback, clears the queue and leaves. The existing three-minute idle timeout after playback ends also remains active.
