@@ -41,7 +41,7 @@ async function advance(s) {
         clearTimeout(timer);
         s.current = track; s.hasStarted = false;
         s.resource = createAudioResource(probe.stream, { inputType: probe.type, inlineVolume: true });
-        s.resource.volume.setVolume((s.volume ?? 100) / 100);
+        s.resource.volume.setVolume((s.volume ?? 50) / 100);
         s.resource.encoder?.setBitrate(192000);
         s.player.play(s.resource);
         void updatePanel(s);
@@ -55,7 +55,7 @@ async function advance(s) {
 }
 async function createSession(interaction, channel) {
   const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
-  const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 100, current: null, loading: false, closed: false, text: interaction.channel };
+  const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 50, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
   s.player.on(AudioPlayerStatus.Idle, () => { rememberTrack(s); s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });

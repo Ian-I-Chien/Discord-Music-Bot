@@ -29,7 +29,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`${bar}\`\n\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
-  now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 100}%**`, inline: true });
+  now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || !s.history?.length),
     new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
@@ -45,7 +45,7 @@ export function queuePayload(session, requestedPage = 0) {
   const ended = Boolean(s.closed);
   const { page, pages, start } = queuePagination(s);
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)
-    .addFields({ name: '音量', value: `🔊 **${s.volume ?? 100}%**`, inline: true })
+    .addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true })
     .setDescription(s.queue.length ? s.queue.slice(start, start + QUEUE_PAGE_SIZE).map((t, n) => {
       const author = escapeMarkdown(String(t.author || 'YouTube').replace(/\s+/g, ' ').slice(0,50));
       const duration = t.duration > 0 ? ` · ${time(t.duration)}` : '';

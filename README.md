@@ -14,7 +14,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 - Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every second during playback and stops refreshing while paused. Pending edits are coalesced when Discord throttles updates.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
 - Up to 300 queued tracks and automatic disconnect after three idle minutes once the current track and waiting queue have finished. Commands from the same voice channel reset this idle countdown; new playback cancels it. Controls require membership in the bot's voice channel.
-- Supports live volume adjustment (0–100%). The test branch decodes and re-encodes Opus to apply volume, adding CPU work compared with the production passthrough path.
+- Supports live volume adjustment (0–100%), with new sessions starting at 50%. The test branch decodes and re-encodes Opus to apply volume, adding CPU work compared with the production passthrough path.
 
 ## Development and environments
 
