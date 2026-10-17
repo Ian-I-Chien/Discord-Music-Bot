@@ -91,6 +91,7 @@ export function syncPanel(s, ping = 0) {
       }
       else if (!s.closed) {
         const previous = s.panel;
+        const removePrevious = s.panelRemovePrevious;
         const message = await s.text.send(payload).catch(error => {
           console.error('面板傳送失敗：', error.code ?? error.name, error.message);
           s.panelError = new Error('無法顯示播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
@@ -99,13 +100,21 @@ export function syncPanel(s, ping = 0) {
         if (message) {
           s.panel = message;
           s.panelRepost = false;
+          s.panelRemovePrevious = false;
           s.panelSignature = signature;
           s.panelError = null;
-          // Retire the old controls only after the replacement has been sent.
-          if (previous) await previous.edit({ components: [] }).catch(error => {
-            console.warn('舊面板控制項清除失敗：', error.code ?? error.name, error.message);
-          });
-        } else s.panelRepost = false;
+          // Keep the original usable until the replacement has been sent.
+          if (previous) {
+            if (removePrevious) {
+              await previous.delete().catch(async error => {
+                console.warn('舊播放面板刪除失敗：', error.code ?? error.name, error.message);
+                await previous.edit({ components: [] }).catch(() => {});
+              });
+            } else await previous.edit({ components: [] }).catch(error => {
+              console.warn('舊面板控制項清除失敗：', error.code ?? error.name, error.message);
+            });
+          }
+        } else { s.panelRepost = false; s.panelRemovePrevious = false; }
         if (message && s.closed) await message.edit(panelPayload(s, ping)).catch(() => {});
       }
     }
@@ -113,14 +122,22 @@ export function syncPanel(s, ping = 0) {
   return s.panelWork;
 }
 
-export async function repostPanel(s, ping = 0) {
+export async function repostPanel(s, ping = 0, { removePrevious = false, track } = {}) {
   // Finish the existing edit before replacing the active message reference.
   if (s.panelWork) await s.panelWork;
   if (s.closed) throw new Error('播放已結束，請使用 /play 再次點歌。');
+  if (track && s.current !== track) return;
   s.panelView = 'now';
   s.panelRepost = true;
+  s.panelRemovePrevious = removePrevious;
   await syncPanel(s, ping);
   if (s.panelError) throw s.panelError;
+}
+
+export function syncStartedTrackPanel(s, ping = 0) {
+  const firstStart = !s.hasStarted;
+  s.hasStarted = true;
+  return firstStart ? repostPanel(s, ping, { removePrevious: true, track: s.current }) : syncPanel(s, ping);
 }
 
 export function syncQueue(s, requestedPage) {

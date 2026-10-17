@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue, repostPanel } from '../src/panel.js';
+import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue, repostPanel, syncStartedTrackPanel } from '../src/panel.js';
 function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
@@ -93,6 +93,45 @@ test('volume is visible by default in player, idle and queue views', async () =>
   s.text={async send(p){posted=p;return {async edit(){}};}};
   await syncPanel(s);assert.equal(posted.embeds[0].toJSON().title,'音樂播放器');
   assert.match(posted.embeds[0].toJSON().fields[0].value,/30%/);
+});
+
+test('a new track sends a replacement before deleting the active queue panel', async () => {
+  const s=session();s.hasStarted=false;s.panelView='queue';const calls=[];
+  const old={async delete(){calls.push('delete');}};
+  const fresh={async edit(){calls.push('edit-new');}};
+  s.panel=old;s.text={async send(payload){calls.push('send');assert.equal(payload.embeds[0].toJSON().title,'正在播放');return fresh;}};
+  await syncStartedTrackPanel(s);
+  assert.deepEqual(calls,['send','delete']);assert.equal(s.panel,fresh);assert.equal(s.hasStarted,true);
+  // Resume and stream recovery do not create another message for the same track.
+  await syncStartedTrackPanel(s);assert.deepEqual(calls,['send','delete']);
+  s.current={...s.current,title:'Next song'};s.hasStarted=false;
+  fresh.delete=async()=>calls.push('delete-new');
+  await syncStartedTrackPanel(s);assert.deepEqual(calls,['send','delete','send','delete-new']);
+});
+
+test('track replacement send failures leave the original panel intact', async () => {
+  const s=session();s.hasStarted=false;let deleted=false;
+  const old={async delete(){deleted=true;}};s.panel=old;
+  s.text={async send(){throw new Error('Network failure');}};
+  await assert.rejects(syncStartedTrackPanel(s),/無法顯示播放面板/);
+  assert.equal(deleted,false);assert.equal(s.panel,old);assert.equal(s.panelRemovePrevious,false);
+});
+
+test('failed deletion disables stale controls without losing the replacement', async () => {
+  const s=session();s.hasStarted=false;let retired;
+  s.panel={async delete(){throw new Error('Missing access');},async edit(payload){retired=payload;}};
+  const fresh={};s.text={async send(){return fresh;}};
+  await syncStartedTrackPanel(s);
+  assert.equal(s.panel,fresh);assert.deepEqual(retired,{components:[]});
+});
+
+test('a delayed transition does not repost a song that has already been replaced', async () => {
+  const s=session();s.hasStarted=false;let release,sends=0;
+  s.panelWork=new Promise(resolve=>release=resolve);
+  s.text={async send(){sends++;return {};}};
+  const task=syncStartedTrackPanel(s);
+  s.current={title:'Newer song'};release();await task;
+  assert.equal(sends,0);
 });
 
 test('now-playing posts a fresh panel, retires old controls and preserves playback', async () => {
