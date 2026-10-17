@@ -74,7 +74,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | `/queue` | Open the shared, paginated view of upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import a finite snapshot of currently available recommendations; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 

@@ -9,3 +9,10 @@ export function setVolume(session, percent) {
   session.volume = percent;
   session.resource?.volume?.setVolume(percent / 100);
 }
+
+export const MIX_IMPORT_LIMIT = 20;
+export function playlistImportLimit(url, queued) {
+  const remaining = Math.max(0, MAX_QUEUE - queued);
+  const isMix = new URL(url).searchParams.get('list')?.startsWith('RD');
+  return isMix ? Math.min(MIX_IMPORT_LIMIT, remaining) : remaining;
+}

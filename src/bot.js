@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
-import { MAX_QUEUE, enqueueTrack, setVolume } from './controls.js';
+import { MAX_QUEUE, enqueueTrack, setVolume, playlistImportLimit } from './controls.js';
 import { syncPanel, queueMetadata, syncQueue } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
@@ -84,7 +84,7 @@ async function handle(i, action = i.commandName) {
     if (!s) s = await createSession(i, channel);
     if (s.queue.length >= MAX_QUEUE) throw new Error('佇列已滿，請稍後再試。');
     if (list) {
-      const playlist = await expandPlaylist(list, MAX_QUEUE - s.queue.length);
+      const playlist = await expandPlaylist(list, playlistImportLimit(list, s.queue.length));
       s.queue.push(...playlist.items);
     } else {
       const item = { query: input };
