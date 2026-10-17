@@ -19,7 +19,7 @@ function dispose(s) {
   s.leaveTask = sendVoiceLeave(client.guilds.cache.get(s.guildId)).catch(() => {});
   return s.leaveTask;
 }
-function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 120000); }
+function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 180000); }
 async function advance(s) {
   if (s.closed || s.loading || s.current) return;
   s.loading = true; clearTimeout(s.idleTimer); void updatePanel(s);
@@ -73,6 +73,7 @@ async function handle(i, action = i.commandName) {
   if (!channel || channel.type !== 2) throw new Error('請先加入一般語音頻道。');
   let s = sessions.get(i.guildId);
   if (s && s.channelId !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
+  if (s && !s.current && !s.loading && !s.queue.length) idle(s);
   if (action === 'play' || action === 'playnext') {
     const me = await i.guild.members.fetchMe();
     if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
