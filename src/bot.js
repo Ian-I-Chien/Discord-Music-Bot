@@ -3,7 +3,7 @@ import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { registerCommands } from './commands.js';
-import { syncPanel, queueMetadata } from './panel.js';
+import { syncPanel, queueMetadata, queuePagination } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
@@ -96,7 +96,9 @@ async function handle(i, action = i.commandName) {
     case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
     case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';
     case 'leave': dispose(s); return '👋 已清空並離開。';
-    case 'queue': return { session: s };
+    case 'page-prev': queuePagination(s, -1); return { session: s };
+    case 'page-next': queuePagination(s, 1); return { session: s };
+    case 'queue': s.queuePage = 0; return { session: s };
     default: throw new Error('未知指令。');
   }
 }

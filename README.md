@@ -10,8 +10,8 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 ## Features
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
-- Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and the next three tracks.
-- Pause/resume, skip, and stop buttons. Progress refreshes every 15 seconds.
+- Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and a paginated queue showing eight tracks per page.
+- Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every 15 seconds.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
 - Up to 100 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
 - Sends WebM Opus audio without re-encoding in the bot, reducing CPU usage on Raspberry Pi.
