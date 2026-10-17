@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue, repostPanel, syncStartedTrackPanel } from '../src/panel.js';
+import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel } from '../src/panel.js';
 function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
@@ -93,6 +93,32 @@ test('volume is visible by default in player, idle and queue views', async () =>
   s.text={async send(p){posted=p;return {async edit(){}};}};
   await syncPanel(s);assert.equal(posted.embeds[0].toJSON().title,'音樂播放器');
   assert.match(posted.embeds[0].toJSON().fields[0].value,/30%/);
+});
+
+test('a newly visible panel is valid after the pending send response arrives', async () => {
+  const s=session();let release;
+  const old={id:'old',async edit(){}};const fresh={id:'new',async edit(){}};
+  s.panel=old;s.text={async send(){await new Promise(resolve=>release=resolve);return fresh;}};
+  const posting=repostPanel(s);await Promise.resolve();
+  assert.equal(s.panel.id,'old');
+  let checked=false;
+  const validation=isActivePanel(s,'new').then(value=>{checked=true;return value;});
+  await Promise.resolve();assert.equal(checked,false);
+  release();await posting;assert.equal(await validation,true);
+  assert.equal(await isActivePanel(s,'old'),false);
+});
+
+test('panel validation waits through an already queued replacement', async () => {
+  const s=session();let release,edits=0;
+  s.panel={id:'old',async edit(){if (++edits === 1) await new Promise(resolve=>release=resolve);}};
+  s.text={async send(){return {id:'new',async edit(){}};}};
+  const editing=syncPanel(s);await Promise.resolve();
+  const posting=repostPanel(s);
+  const validation=isActivePanel(s,'new');
+  release();await editing;await posting;
+  assert.equal(await validation,true);
+  s.closed=true;assert.equal(await isActivePanel(s,'new'),false);
+  assert.equal(await isActivePanel(undefined,'new'),false);
 });
 
 test('a new track sends a replacement before deleting the active queue panel', async () => {
