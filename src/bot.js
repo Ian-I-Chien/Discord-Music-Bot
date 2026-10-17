@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
+import { finishQuietReply } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
@@ -134,7 +135,6 @@ async function handle(i, action = i.commandName) {
 client.on('interactionCreate', async i => {
   const button = i.isButton() && i.customId.startsWith('music:');
   if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
-  const queuePageButton = button && i.customId.startsWith('music:queue-page:');
   try {
     await i.deferReply({ flags: 64 });
     const previous = locks.get(i.guildId) ?? Promise.resolve();
@@ -151,11 +151,14 @@ client.on('interactionCreate', async i => {
       if (result?.session) {
         await updatePanel(result.session);
       }
-      await i.deleteReply().catch(() => {});
+      await finishQuietReply(i);
     });
     locks.set(i.guildId, task);
     try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
-  } catch (error) { if (i.deferred) await i.editReply({ content: error.message.slice(0,1900), ...options }).catch(() => {}); }
+  } catch (error) {
+    console.error('指令執行或回覆失敗：', button ? i.customId : i.commandName, error.code ?? error.name, error.message);
+    if (i.deferred) await i.editReply({ content: error.message.slice(0,1900), ...options }).catch(replyError => console.warn('錯誤回覆失敗：', replyError.code ?? replyError.name, replyError.message));
+  }
 });
 client.once('clientReady', async c => {
   try {
