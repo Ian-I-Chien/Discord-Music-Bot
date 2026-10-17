@@ -3,7 +3,7 @@ import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamTyp
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, streamPlaylist } from './source.js';
 import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
-import { finishQuietReply } from './interaction-reply.js';
+import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
@@ -134,7 +134,7 @@ async function handle(i, action = i.commandName) {
       void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
     }
     void advance(s);
-    return { session: s };
+    return { session: s, waitForPlayback: !s.hasStarted };
   }
   if (action === 'volume') {
     if (!s) {
@@ -228,11 +228,14 @@ client.on('interactionCreate', async i => {
         await updatePanel(result.session);
       }
       trace('panel-updated');
-      await finishQuietReply(i);
-      trace('completed');
+      return result;
     });
     locks.set(i.guildId, task);
-    try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
+    let result;
+    try { result = await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
+    if (result?.waitForPlayback) await waitForPlayback(result.session);
+    await finishQuietReply(i);
+    trace('completed');
   } catch (error) {
     trace('failed', { code: error.code ?? error.name });
     console.error('指令執行或回覆失敗：', button ? i.customId : i.commandName, error.code ?? error.name, error.message);
