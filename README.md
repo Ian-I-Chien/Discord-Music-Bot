@@ -20,7 +20,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 
 `main` is the only persistent branch. Production and test deployments use the same source revision from `main`, with separate local tokens, directories, and services. Create your own feature branch when developing, validate it in the test environment, and merge it into `main` when ready. There is no permanent `test` branch.
 
-The current `main` enables self-deafening when joining voice. This development branch disables self-deafening in the test deployment, imports YouTube playlists and Mix snapshots (including video URLs with a `list` parameter), and waits until audio playback begins before showing the full player panel. No real tokens or `.env` files are included in this repository.
+The current `main` enables self-deafening when joining voice. This development branch disables self-deafening in the test deployment, imports YouTube playlists and Mix snapshots (including video URLs with a `list` parameter), and publishes the player panel only after audio playback begins. Loading messages, queue-import notices, and technical diagnostics are not posted publicly. Successful command acknowledgements are dismissed; command errors are private to the requester. No real tokens or `.env` files are included in this repository.
 
 ## Create and invite your bot
 

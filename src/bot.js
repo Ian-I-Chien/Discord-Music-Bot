@@ -3,17 +3,12 @@ import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { registerCommands } from './commands.js';
-import { panelPayload, queueMetadata } from './panel.js';
+import { syncPanel, queueMetadata } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
-function updatePanel(s) {
-  s.panelWork = (s.panelWork || Promise.resolve()).catch(() => {}).then(async () => {
-    if (s.panel) await s.panel.edit(panelPayload(s, client.ws.ping)).catch(() => {});
-  });
-  return s.panelWork;
-}
+function updatePanel(s) { return syncPanel(s, client.ws.ping); }
 function dispose(s) {
   if (s.closed) return;
   s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
@@ -46,7 +41,7 @@ async function advance(s) {
         return;
       } catch (error) {
         abort.abort(); s.stream?.destroy();
-        if (!s.closed) void s.text.send({ content: `⚠️ ${error.message}`.slice(0, 1900), ...options }).catch(() => {});
+        if (!s.closed) console.warn('音源播放失敗：', error.message);
       } finally { clearTimeout(timer); }
     }
   } finally { s.loading = false; void updatePanel(s); if (!s.closed && !s.current) { if (s.queue.length) void advance(s); else idle(s); } }
@@ -109,19 +104,15 @@ client.on('interactionCreate', async i => {
   const button = i.isButton() && i.customId.startsWith('music:');
   if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
   try {
-    if (button) await i.deferReply({ flags: 64 }); else await i.deferReply();
+    await i.deferReply({ flags: 64 });
     const previous = locks.get(i.guildId) ?? Promise.resolve();
     const task = previous.catch(() => {}).then(async () => {
       if (button && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
       const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
       if (result?.session) {
-        const s = result.session;
-        const old = s.panel;
-        const message = await i.editReply(panelPayload(s, client.ws.ping));
-        s.panel = message;
-        if (old && old.id !== message.id) await old.edit(panelPayload(s, client.ws.ping, true)).catch(() => {});
-        await updatePanel(s);
-      } else await i.editReply({ content: result, ...options });
+        await updatePanel(result.session);
+      }
+      await i.deleteReply().catch(() => {});
     });
     locks.set(i.guildId, task);
     try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
