@@ -14,7 +14,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 - Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every 15 seconds.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
 - Up to 300 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
-- Sends WebM Opus audio without re-encoding in the bot, reducing CPU usage on Raspberry Pi.
+- Supports live volume adjustment (0–100%). The test branch decodes and re-encodes Opus to apply volume, adding CPU work compared with the production passthrough path.
 
 ## Development and environments
 
@@ -65,6 +65,8 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | Command | Action |
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
+| `/playnext link:<URL or song name>` | Insert a single track at the front of the waiting queue without interrupting the current song |
+| `/volume percent:<0–100>` | Set playback volume immediately; 0 mutes, 100 is original level |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/skip` | Skip the current track |
@@ -89,7 +91,7 @@ docker compose build --pull --no-cache
 docker compose up -d
 ```
 
-The image includes Node 24, a Python venv, yt-dlp, and FFmpeg. The current direct Opus playback path does not use FFmpeg. The ARM64 Docker build has not been verified; the existing Pi uses direct installation.
+The image includes Node 24, a Python venv, yt-dlp, and FFmpeg. The current Opus playback path does not use FFmpeg. Volume processing uses the bundled OpusScript encoder/decoder. The ARM64 Docker build has not been verified; the existing Pi uses direct installation.
 
 ## Existing Raspberry Pi deployment
 

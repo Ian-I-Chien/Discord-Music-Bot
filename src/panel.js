@@ -29,6 +29,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`${bar}\`\n\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '佇列已播完，等待下一首歌曲。');
+  now.setFooter({ text: `音量 ${s.volume ?? 100}%` });
   const { page, pages, start } = queuePagination(s);
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)
     .setDescription(s.queue.length ? s.queue.slice(start, start + QUEUE_PAGE_SIZE).map((t, n) => {

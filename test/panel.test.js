@@ -24,7 +24,7 @@ test('loading publishes no prompts; playback publishes only one clean panel', as
   const s=session(); s.hasStarted=false; s.loading=true; s.notice='internal import details';
   let sends=0, edits=0;
   const message={ async edit(data) { edits++; assert.equal(data.content,''); } };
-  s.text={ async send(data) { sends++; assert.equal(data.content,''); assert.equal(data.embeds[0].toJSON().footer,undefined); return message; } };
+  s.text={ async send(data) { sends++; assert.equal(data.content,''); assert.match(data.embeds[0].toJSON().footer.text,/音量 100%/); return message; } };
   await syncPanel(s); assert.equal(sends,0);
   s.hasStarted=true; s.loading=false;
   await syncPanel(s); assert.equal(sends,1);
