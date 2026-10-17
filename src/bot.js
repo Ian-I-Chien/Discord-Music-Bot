@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
+import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
@@ -10,13 +11,13 @@ if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
-function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s)]); }
+function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
+  s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
-  s.leaveTask = sendVoiceLeave(client.guilds.cache.get(s.guildId)).catch(() => {});
+  s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
   return s.leaveTask;
 }
 function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 180000); }
@@ -54,7 +55,7 @@ async function advance(s) {
 }
 async function createSession(interaction, channel) {
   const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
-  const s = { guildId: interaction.guildId, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 100, current: null, loading: false, closed: false, text: interaction.channel };
+  const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 100, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
   s.player.on(AudioPlayerStatus.Idle, () => { rememberTrack(s); s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });

@@ -60,6 +60,8 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 
 `npm run register` can update global commands separately, but normal startup already registers them.
 
+The bot updates its voice channel status with the current song (and a pause indicator). It clears its status when playback ends or it leaves. Grant **Set Voice Channel Status** in the server/channel permissions; missing permissions do not interrupt playback.
+
 ## Commands
 
 | Command | Action |
