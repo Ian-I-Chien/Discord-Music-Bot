@@ -140,6 +140,14 @@ export function syncStartedTrackPanel(s, ping = 0) {
   return firstStart ? repostPanel(s, ping, { removePrevious: true, track: s.current }) : syncPanel(s, ping);
 }
 
+export async function isActivePanel(s, messageId) {
+  if (!s) return false;
+  // Discord can display a sent message before its REST response updates s.panel.
+  // A queued replacement may start another worker as the current one finishes.
+  while (s.panelWork) await s.panelWork;
+  return !s.closed && s.panel?.id === messageId;
+}
+
 export function syncQueue(s, requestedPage) {
   if (requestedPage === undefined) return Promise.resolve();
   s.panelView = 'queue';

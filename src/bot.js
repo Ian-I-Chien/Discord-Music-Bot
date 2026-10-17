@@ -7,7 +7,7 @@ import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
-import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel } from './panel.js';
+import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel } from './panel.js';
 import { cancelRecovery, endedEarly, playbackSeconds, recoverPlayback } from './recovery.js';
 import { openRecoveryAudio } from './recovery-audio.js';
 import { watchEmptyChannel } from './empty-channel.js';
@@ -179,8 +179,11 @@ client.on('interactionCreate', async i => {
     const task = previous.catch(() => {}).then(async () => {
       if (button) {
         const session = sessions.get(i.guildId);
-        const expected = session?.panel?.id;
-        if (expected !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+        if (!await isActivePanel(session, i.message.id) || sessions.get(i.guildId) !== session) {
+          console.warn('面板驗證失敗：', JSON.stringify({ guild: i.guildId, action: i.customId,
+            clicked: i.message.id, active: sessions.get(i.guildId)?.panel?.id, title: session?.current?.title }));
+          throw new Error('這個面板已過期，請使用最新的播放面板。');
+        }
       }
       const result = await handle(i, button && ['music:pause', 'music:resume'].includes(i.customId) ? 'toggle-pause' : button ? i.customId.slice(6) : i.commandName);
       if (result?.queueSession) {
