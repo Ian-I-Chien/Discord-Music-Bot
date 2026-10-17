@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
+import { createAudioPlayer, createAudioResource, StreamType, NoSubscriberBehavior, AudioPlayerStatus, entersState } from '@discordjs/voice';
+import { togglePause } from '../src/controls.js';
 import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel, refreshPlaybackProgress } from '../src/panel.js';
 function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
@@ -123,6 +126,30 @@ test('progress refresh skips paused, idle and closed sessions',async()=>{
   s.player.state.status='playing';s.current=null;await refreshPlaybackProgress(s);
   s.current={title:'Song'};s.closed=true;await refreshPlaybackProgress(s);
   assert.equal(edits,0);
+});
+
+test('real audio player pause and resume remain usable after a slow progress edit',async()=>{
+  const s=session();let release,edits=0,last;
+  s.player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Play}});
+  s.resource=createAudioResource(Readable.from(Array.from({length:500},()=>Buffer.from([0xf8,0xff,0xfe]))),{inputType:StreamType.Opus});
+  s.panel={id:'active',async edit(payload){last=payload;if(++edits===1)await new Promise(r=>release=r);}};
+  try {
+    s.player.play(s.resource);await entersState(s.player,AudioPlayerStatus.Playing,1000);
+    const pending=refreshPlaybackProgress(s);await Promise.resolve();
+    const pause=isActivePanel(s,'active').then(async valid=>{
+      assert.equal(valid,true);togglePause(s);await syncPanel(s);
+    });
+    for(let n=0;n<20;n++)await refreshPlaybackProgress(s);
+    release();await pending;await pause;
+    assert.equal(s.player.state.status,AudioPlayerStatus.Paused);
+    assert.equal(last.embeds[0].toJSON().title,'已暫停');
+    assert.equal(last.components[0].toJSON().components[1].label,'繼續');
+    assert.equal(await isActivePanel(s,'active'),true);
+    togglePause(s);await entersState(s.player,AudioPlayerStatus.Playing,1000);await syncStartedTrackPanel(s);
+    assert.equal(last.embeds[0].toJSON().title,'正在播放');
+    assert.equal(last.components[0].toJSON().components[1].label,'暫停');
+    assert.equal(s.panel.id,'active');
+  } finally {s.closed=true;s.player.stop(true);s.resource.playStream.destroy();}
 });
 
 test('a newly visible panel is valid after the pending send response arrives', async () => {
