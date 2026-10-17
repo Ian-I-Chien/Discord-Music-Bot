@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
+import { ActivityType, Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
@@ -192,6 +192,7 @@ client.on('interactionCreate', async i => {
   }
 });
 client.once('clientReady', async c => {
+  c.user.setActivity('那首即將下班的歌', { type: ActivityType.Listening });
   try {
     await Promise.allSettled([...c.guilds.cache.values()].filter(g => g.members.me?.voice.channelId).map(sendVoiceLeave));
     await registerCommands(c.application);
