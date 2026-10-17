@@ -31,7 +31,8 @@ export function panelPayload(s, ping = 0, disabled = false) {
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
   now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 100}%**`, inline: true });
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(paused ? 'music:resume' : 'music:pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
+    new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || !s.history?.length),
+    new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
     new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
     new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
@@ -76,18 +77,26 @@ export function syncPanel(s, ping = 0) {
     // Keep at most one in-flight edit and coalesce updates during API rate limits.
     while (s.panelDirty) {
       s.panelDirty = false;
-      if (!s.closed && !s.hasStarted && !s.showIdlePanel) continue;
+      if (!s.closed && !s.hasStarted && !s.showIdlePanel && s.panelView !== 'queue') continue;
       const payload = !s.closed && s.panelView === 'queue' ? queuePayload(s, s.queuePage || 0) : panelPayload(s, ping);
       const signature = JSON.stringify(payload);
       if (signature === s.panelSignature) continue;
       if (s.panel) {
-        const edited = await s.panel.edit(payload).then(() => true).catch(() => false);
-        if (edited) s.panelSignature = signature;
+        const edited = await s.panel.edit(payload).then(() => true).catch(error => {
+          console.error('面板更新失敗：', error.code ?? error.name, error.message);
+          s.panelError = new Error('無法更新播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
+          return false;
+        });
+        if (edited) { s.panelSignature = signature; s.panelError = null; }
       }
       else if (!s.closed) {
-        const message = await s.text.send(payload).catch(() => null);
+        const message = await s.text.send(payload).catch(error => {
+          console.error('面板傳送失敗：', error.code ?? error.name, error.message);
+          s.panelError = new Error('無法顯示播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
+          return null;
+        });
         s.panel = message;
-        if (message) s.panelSignature = signature;
+        if (message) { s.panelSignature = signature; s.panelError = null; }
         if (message && s.closed) await message.edit(panelPayload(s, ping)).catch(() => {});
       }
     }
@@ -99,5 +108,5 @@ export function syncQueue(s, requestedPage) {
   if (requestedPage === undefined) return Promise.resolve();
   s.panelView = 'queue';
   s.queuePage = queuePagination({ ...s, queuePage: requestedPage }).page;
-  return syncPanel(s);
+  return syncPanel(s).then(() => { if (s.panelError) throw s.panelError; });
 }

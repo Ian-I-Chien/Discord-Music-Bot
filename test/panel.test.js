@@ -11,12 +11,12 @@ test('panel contains linked track, thumbnail, duration, next tracks and controls
   assert.equal(data.components.length,1);
   assert.ok(data.components[0].toJSON().components.some(c=>c.custom_id==='music:queue'));
   assert.doesNotMatch(now.description,/Song 4/);
-  assert.equal(data.components[0].toJSON().components[0].custom_id,'music:pause');
+  assert.equal(data.components[0].toJSON().components[1].custom_id,'music:toggle-pause');
   assert.deepEqual(data.allowedMentions.parse, []);
 });
 test('paused and ended panels reflect state and disable old controls', () => {
   const s=session(); s.player.state.status='paused';
-  assert.equal(panelPayload(s).components[0].toJSON().components[0].custom_id,'music:resume');
+  assert.equal(panelPayload(s).components[0].toJSON().components[1].custom_id,'music:toggle-pause');
   s.closed=true;
   assert.ok(panelPayload(s).components[0].toJSON().components.every(c=>c.disabled));
   assert.equal(time(NaN),'--:--'); assert.equal(time(3601),'1:00:01');
@@ -93,4 +93,23 @@ test('volume is visible by default in player, idle and queue views', async () =>
   s.text={async send(p){posted=p;return {async edit(){}};}};
   await syncPanel(s);assert.equal(posted.embeds[0].toJSON().title,'音樂播放器');
   assert.match(posted.embeds[0].toJSON().fields[0].value,/30%/);
+});
+
+
+test('explicit queue opens while the next audio source is loading', async () => {
+  const s = session(); s.hasStarted = false; s.current = null; s.loading = true;
+  let payload;
+  s.panel = { async edit(value) { payload = value; } };
+  await syncQueue(s, 0);
+  assert.match(payload.embeds[0].toJSON().title, /待播清單/);
+  assert.match(payload.embeds[0].toJSON().description, /Song 0/);
+});
+
+test('queue reports failed edits instead of silently acknowledging success', async () => {
+  const s = session();
+  s.panel = { async edit() { throw new Error('Missing Permissions'); } };
+  await assert.rejects(syncQueue(s, 0), /無法更新播放面板/);
+  s.panel = { async edit() {} };
+  await syncQueue(s, 0);
+  assert.equal(s.panelError, null);
 });

@@ -2,21 +2,22 @@ import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
+import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
-import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit } from './controls.js';
+import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
 import { syncPanel, queueMetadata, syncQueue } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
-function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s)]); }
+function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
+  s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
-  s.leaveTask = sendVoiceLeave(client.guilds.cache.get(s.guildId)).catch(() => {});
+  s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
   return s.leaveTask;
 }
 function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 180000); }
@@ -54,10 +55,10 @@ async function advance(s) {
 }
 async function createSession(interaction, channel) {
   const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
-  const s = { guildId: interaction.guildId, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 100, current: null, loading: false, closed: false, text: interaction.channel };
+  const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 100, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
-  s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
+  s.player.on(AudioPlayerStatus.Idle, () => { rememberTrack(s); s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
   s.player.on(AudioPlayerStatus.Playing, () => { if (!s.hasStarted) s.panelView = 'now'; s.hasStarted = true; void updatePanel(s); });
   s.player.on('error', error => { console.error('播放器錯誤：', error.message); s.player.stop(true); });
   connection.on('error', () => dispose(s));
@@ -120,8 +121,10 @@ async function handle(i, action = i.commandName) {
   }
   switch (action) {
     case 'now-playing': s.panelView = 'now'; return { session: s };
-    case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
-    case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
+    case 'toggle-pause': togglePause(s); return { session: s };
+    case 'pause': togglePause(s, 'pause'); return { session: s };
+    case 'resume': togglePause(s, 'resume'); return { session: s };
+    case 'previous': previousTrack(s); if (!s.current) void advance(s); return { session: s };
     case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';
     case 'leave': dispose(s); return '👋 已清空並離開。';
     case 'queue': return { queueSession: s, page: 0 };
@@ -141,7 +144,7 @@ client.on('interactionCreate', async i => {
         const expected = session?.panel?.id;
         if (expected !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
       }
-      const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
+      const result = await handle(i, button && ['music:pause', 'music:resume'].includes(i.customId) ? 'toggle-pause' : button ? i.customId.slice(6) : i.commandName);
       if (result?.queueSession) {
         await syncQueue(result.queueSession, result.page);
       }
