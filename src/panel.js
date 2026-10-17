@@ -86,3 +86,29 @@ export function syncPanel(s, ping = 0) {
   }).finally(() => { s.panelWork = null; });
   return s.panelWork;
 }
+
+export function syncQueue(s, requestedPage) {
+  if (requestedPage !== undefined) {
+    s.queueVisible = true;
+    s.queuePage = queuePagination({ ...s, queuePage: requestedPage }).page;
+  }
+  if (!s.queueVisible) return Promise.resolve();
+  s.queueDirty = true;
+  if (s.queueWork) return s.queueWork;
+  s.queueWork = Promise.resolve().then(async () => {
+    while (s.queueDirty) {
+      s.queueDirty = false;
+      const payload = queuePayload(s, s.queuePage || 0);
+      const signature = JSON.stringify(payload);
+      if (signature === s.queueSignature) continue;
+      if (s.queueMessage) {
+        const edited = await s.queueMessage.edit(payload).catch(() => null);
+        if (edited) s.queueSignature = signature;
+      } else if (!s.closed) {
+        s.queueMessage = await s.text.send(payload).catch(() => null);
+        if (s.queueMessage) s.queueSignature = signature;
+      }
+    }
+  }).finally(() => { s.queueWork = null; });
+  return s.queueWork;
+}

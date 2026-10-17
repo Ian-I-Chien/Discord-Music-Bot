@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { panelPayload, time, syncPanel, queuePagination, queuePayload } from '../src/panel.js';
+import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue } from '../src/panel.js';
 function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
@@ -65,4 +65,16 @@ test('rapid panel refreshes coalesce while a Discord edit is pending', async () 
   for(let n=0;n<50;n++) syncPanel(s);
   assert.equal(edits,1); release(); await first;
   assert.equal(edits,2); assert.equal(s.panelWork,null);
+});
+
+test('public queue opens only on request and refreshes existing message on track changes', async () => {
+  const s=session(); let sends=0,edits=0,last;
+  s.text={async send(payload){sends++;last=payload;return {async edit(payload){edits++;last=payload;return this;}};}};
+  await syncQueue(s); assert.equal(sends,0);
+  await syncQueue(s,0); assert.equal(sends,1); assert.equal(last.embeds.length,1);
+  await syncQueue(s); assert.equal(edits,0);
+  s.queue.shift(); await syncQueue(s); assert.equal(edits,1); assert.equal(sends,1);
+  assert.doesNotMatch(last.embeds[0].toJSON().description,/Song 0/);
+  s.closed=true;s.queue=[];await syncQueue(s);assert.equal(edits,2);
+  assert.ok(last.components[0].toJSON().components.every(c=>c.disabled));
 });

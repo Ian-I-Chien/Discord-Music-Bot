@@ -5,12 +5,12 @@ import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './sou
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, setVolume } from './controls.js';
-import { syncPanel, queueMetadata, queuePayload } from './panel.js';
+import { syncPanel, queueMetadata, syncQueue } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
-function updatePanel(s) { return syncPanel(s, client.ws.ping); }
+function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s)]); }
 function dispose(s) {
   if (s.closed) return;
   s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
@@ -122,15 +122,17 @@ client.on('interactionCreate', async i => {
   if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
   const queuePageButton = button && i.customId.startsWith('music:queue-page:');
   try {
-    if (queuePageButton) await i.deferUpdate();
-    else await i.deferReply({ flags: 64 });
+    await i.deferReply({ flags: 64 });
     const previous = locks.get(i.guildId) ?? Promise.resolve();
     const task = previous.catch(() => {}).then(async () => {
-      if (button && !queuePageButton && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+      if (button) {
+        const session = sessions.get(i.guildId);
+        const expected = queuePageButton ? session?.queueMessage?.id : session?.panel?.id;
+        if (expected !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+      }
       const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
       if (result?.queueSession) {
-        await i.editReply(queuePayload(result.queueSession, result.page));
-        return;
+        await syncQueue(result.queueSession, result.page);
       }
       if (result?.session) {
         await updatePanel(result.session);
