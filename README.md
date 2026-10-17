@@ -16,14 +16,11 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 - Up to 100 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
 - Sends WebM Opus audio without re-encoding in the bot, reducing CPU usage on Raspberry Pi.
 
-## Branches and environments
+## Development and environments
 
-| Branch | Purpose | Self-deafen on join |
-| --- | --- | --- |
-| `main` | Production | Enabled |
-| `test` | Validate changes before production | Disabled, pending acceptance |
+`main` is the only persistent branch. Production and test deployments use the same source revision from `main`, with separate local tokens, directories, and services. Create your own feature branch when developing, validate it in the test environment, and merge it into `main` when ready. There is no permanent `test` branch.
 
-Use separate Discord applications, tokens, directories, and services for production and testing. Validate changes in `test` before merging and deploying them to production. No real tokens or `.env` files are included in this repository.
+The current `main` enables self-deafening when joining voice. No real tokens or `.env` files are included in this repository.
 
 ## Create and invite your bot
 
