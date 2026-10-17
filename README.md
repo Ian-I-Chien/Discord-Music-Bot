@@ -134,3 +134,5 @@ Tests cover input validation, global command registration, embed payloads, time 
 ## Secrets and version control
 
 `.gitignore` excludes `.env`, `.env.*`, dependencies, Python environments, logs, and backups. Only the empty `.env.example` template is tracked. Never put tokens in source code, screenshots, commits, or this README. Reset an exposed token immediately in the Developer Portal.
+
+Invoking `/now-playing` posts a new active playback panel at the latest position in chat, preserving the track, elapsed time, volume and queue. Controls on the previous panel are removed.
