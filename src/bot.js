@@ -140,7 +140,11 @@ async function handle(i, action = i.commandName) {
     return { queueSession: s, page };
   }
   switch (action) {
-    case 'now-playing': return { freshPanelSession: s };
+    case 'player-view': s.panelView = 'now'; return { session: s };
+    case 'now-playing':
+      // Also handle return buttons on cards created before the button ID changed.
+      if (i.isButton()) { s.panelView = 'now'; return { session: s }; }
+      return { freshPanelSession: s };
     case 'toggle-pause': togglePause(s); return { session: s };
     case 'pause': togglePause(s, 'pause'); return { session: s };
     case 'resume': togglePause(s, 'resume'); return { session: s };

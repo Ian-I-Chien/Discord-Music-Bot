@@ -74,7 +74,7 @@ test('queue and now-playing replace the same message without duplicate cards', a
   await syncPanel(s); assert.equal(sends,1);
   await syncQueue(s,0); assert.equal(sends,1);assert.equal(edits,1);
   assert.match(last.embeds[0].toJSON().title,/待播清單/);
-  assert.ok(last.components[0].toJSON().components.some(c=>c.custom_id==='music:now-playing'));
+  assert.ok(last.components[0].toJSON().components.some(c=>c.custom_id==='music:player-view'));
   await syncPanel(s);assert.equal(edits,1);
   s.queue.shift();await syncPanel(s);assert.equal(edits,2);
   s.panelView='now';await syncPanel(s);assert.equal(edits,3);assert.equal(sends,1);

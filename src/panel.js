@@ -56,7 +56,7 @@ export function queuePayload(session, requestedPage = 0) {
     new ButtonBuilder().setCustomId(`music:queue-page:${Math.max(0, page - 1)}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
     new ButtonBuilder().setCustomId(`music:queue-page:${Math.min(pages - 1, page + 1)}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
-    new ButtonBuilder().setCustomId('music:now-playing').setLabel('回到播放').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
+    new ButtonBuilder().setCustomId('music:player-view').setLabel('回到播放').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
   );
   return { content: '', embeds: [queue], components: [pagination], allowedMentions: { parse: [] } };
 }
