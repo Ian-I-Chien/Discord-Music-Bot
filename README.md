@@ -69,6 +69,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
+| `/previous` | Replay the previous track from the beginning; return the interrupted track to the front of the queue |
 | `/skip` | Skip the current track |
 | `/now-playing` | Switch the shared message back to the current track |
 | `/queue` | Open the shared, paginated view of upcoming tracks |

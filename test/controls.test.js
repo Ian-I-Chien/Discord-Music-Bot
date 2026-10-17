@@ -43,3 +43,30 @@ test('volume joins once when disconnected and applies before playback', async()=
  assert.equal(state.showIdlePanel,false);
  await assert.rejects(()=>applyVolumeCommand(null,101,connect));assert.equal(joins,1);
 });
+
+test('pause button toggles actual state even before the panel refreshes', async () => {
+  const { togglePause } = await import('../src/controls.js');
+  const s = { current: {}, player: { state: { status: 'playing' }, pause() { this.state.status = 'paused'; return true; }, unpause() { this.state.status = 'playing'; return true; } } };
+  togglePause(s); assert.equal(s.player.state.status, 'paused');
+  togglePause(s); assert.equal(s.player.state.status, 'playing');
+  s.player.state.status = 'autopaused'; togglePause(s); assert.equal(s.player.state.status, 'playing');
+  s.player.state.status = 'idle'; s.player.pause = () => false;
+  assert.throws(() => togglePause(s, 'pause'), /無法暫停/);
+});
+
+test('previous replays history and preserves interrupted song and queue order', async () => {
+  const { rememberTrack, previousTrack } = await import('../src/controls.js');
+  const a = { title: 'A', page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' };
+  const b = { title: 'B', page: 'https://www.youtube.com/watch?v=9WEYFqCUze8' };
+  const s = { current: a, hasStarted: true, queue: [{title:'C'}] };
+  rememberTrack(s); s.current = b;
+  s.player = { stop() { rememberTrack(s); s.current = null; } };
+  previousTrack(s);
+  assert.deepEqual(s.queue.map(t => t.title), ['A', 'B', 'C']);
+  assert.equal(s.queue[0].query, a.page); assert.equal(s.history.length, 0);
+  assert.throws(() => previousTrack(s), /沒有上一首/);
+  s.history = [a]; s.loading = true;
+  assert.throws(() => previousTrack(s), /正在載入/); assert.equal(s.history.length, 1);
+  s.loading = false; s.queue = Array.from({length:MAX_QUEUE},()=>({}));
+  assert.throws(() => previousTrack(s), /佇列已滿/); assert.equal(s.history.length, 1);
+});

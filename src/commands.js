@@ -7,7 +7,7 @@ export const commands = [
   new SlashCommandBuilder().setName('volume').setDescription('調整播放音量')
     .addIntegerOption(o => o.setName('percent').setDescription('音量 0–100，0 為靜音').setMinValue(0).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName('now-playing').setDescription('切回目前正在播放的歌曲面板'),
-  ...[['pause', '暫停'], ['resume', '繼續播放'], ['skip', '跳過目前歌曲'], ['queue', '查看播放佇列'], ['leave', '清空佇列並離開']]
+  ...[['pause', '暫停'], ['resume', '繼續播放'], ['previous', '播放上一首歌曲'], ['skip', '跳過目前歌曲'], ['queue', '查看播放佇列'], ['leave', '清空佇列並離開']]
     .map(([name, text]) => new SlashCommandBuilder().setName(name).setDescription(text)),
 ].map(command => command.setContexts(InteractionContextType.Guild).toJSON());
 export async function registerCommands(application) {
