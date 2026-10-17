@@ -10,7 +10,7 @@ function title(track, limit = 120) {
 }
 export const QUEUE_PAGE_SIZE = 8;
 export function queuePagination(s, delta = 0) {
-  const pages = Math.max(1, Math.ceil(s.queue.length / QUEUE_PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(s.queue.filter(item => !item.playlistPending).length / QUEUE_PAGE_SIZE));
   const page = Math.max(0, Math.min(pages - 1, (s.queuePage || 0) + delta));
   s.queuePage = page;
   return { page, pages, start: page * QUEUE_PAGE_SIZE };
@@ -41,7 +41,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
 }
 export function queuePayload(session, requestedPage = 0) {
   // Each private queue view has its own page; never change shared playback state.
-  const s = { ...session, queuePage: requestedPage };
+  const s = { ...session, queue: session.queue.filter(item => !item.playlistPending), queuePage: requestedPage };
   const ended = Boolean(s.closed);
   const { page, pages, start } = queuePagination(s);
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)

@@ -1,8 +1,9 @@
 import { ActivityType, Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
-import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
-import { finishQuietReply } from './interaction-reply.js';
+import { resolveTrack, normalizeQuery, playlistUrl, streamPlaylist } from './source.js';
+import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
+import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
@@ -22,7 +23,7 @@ client.rest.on('rateLimited', limit => console.warn('Discord API 限流：', JSO
 function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
+  s.closed = true; cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
   s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
@@ -30,14 +31,15 @@ function dispose(s) {
 }
 function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 180000); }
 async function advance(s) {
-  if (s.closed || s.loading || s.current) return;
+  if (s.closed || s.loading || s.current || s.queue[0]?.playlistPending) return;
   s.loading = true; s.showIdlePanel = false; clearTimeout(s.idleTimer); void updatePanel(s);
   try {
     while (!s.closed && s.queue.length) {
+      if (s.queue[0].playlistPending) return;
       const item = s.queue.shift(); const abort = new AbortController(); s.abort = abort;
       const timer = setTimeout(() => abort.abort(), 90000);
       try {
-        const track = await resolveTrack(item.query);
+        const track = await resolveTrack(item.query, { signal: abort.signal });
         if (s.closed) return;
         const response = await fetch(track.url, { signal: abort.signal });
         if (!response.ok || !response.body) throw new Error('音訊下載失敗。');
@@ -59,7 +61,7 @@ async function advance(s) {
         if (!s.closed) console.warn('音源播放失敗：', error.message);
       } finally { clearTimeout(timer); }
     }
-  } finally { s.loading = false; void updatePanel(s); if (!s.closed && !s.current) { if (s.queue.length) void advance(s); else idle(s); } }
+  } finally { s.loading = false; void updatePanel(s); if (!s.closed && !s.current) { if (s.queue.length && !s.queue[0].playlistPending) void advance(s); else if (!s.queue.length) idle(s); } }
 }
 async function createSession(interaction, channel) {
   const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
@@ -122,15 +124,17 @@ async function handle(i, action = i.commandName) {
     if (!s) s = await createSession(i, channel);
     if (s.queue.length >= MAX_QUEUE) throw new Error('佇列已滿，請稍後再試。');
     if (list) {
-      const playlist = await expandPlaylist(list, playlistImportLimit(list, s.queue.length));
-      s.queue.push(...playlist.items);
+      const limit = playlistImportLimit(list, s.queue.length);
+      await importPlaylist(s, signal => streamPlaylist(list, limit, { signal }), {
+        advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
+      }).ready;
     } else {
       const item = { query: input };
       enqueueTrack(s, item, action === 'playnext');
       void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
     }
     void advance(s);
-    return { session: s };
+    return { session: s, waitForPlayback: !s.hasStarted };
   }
   if (action === 'volume') {
     if (!s) {
@@ -224,11 +228,14 @@ client.on('interactionCreate', async i => {
         await updatePanel(result.session);
       }
       trace('panel-updated');
-      await finishQuietReply(i);
-      trace('completed');
+      return result;
     });
     locks.set(i.guildId, task);
-    try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
+    let result;
+    try { result = await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
+    if (result?.waitForPlayback) await waitForPlayback(result.session);
+    await finishQuietReply(i);
+    trace('completed');
   } catch (error) {
     trace('failed', { code: error.code ?? error.name });
     console.error('指令執行或回覆失敗：', button ? i.customId : i.commandName, error.code ?? error.name, error.message);
