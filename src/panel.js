@@ -61,16 +61,21 @@ export async function queueMetadata(query) {
 }
 
 export function syncPanel(s, ping = 0) {
-  s.panelWork = (s.panelWork || Promise.resolve()).catch(() => {}).then(async () => {
-    // Publish only after audio actually starts; keep loading and diagnostics private.
-    if (!s.closed && !s.hasStarted) return;
-    const payload = panelPayload(s, ping);
-    if (s.panel) await s.panel.edit(payload).catch(() => {});
-    else if (!s.closed) {
-      const message = await s.text.send(payload).catch(() => null);
-      s.panel = message;
-      if (message && s.closed) await message.edit(panelPayload(s, ping)).catch(() => {});
+  s.panelDirty = true;
+  if (s.panelWork) return s.panelWork;
+  s.panelWork = Promise.resolve().then(async () => {
+    // Keep at most one in-flight edit and coalesce updates during API rate limits.
+    while (s.panelDirty) {
+      s.panelDirty = false;
+      if (!s.closed && !s.hasStarted) continue;
+      const payload = panelPayload(s, ping);
+      if (s.panel) await s.panel.edit(payload).catch(() => {});
+      else if (!s.closed) {
+        const message = await s.text.send(payload).catch(() => null);
+        s.panel = message;
+        if (message && s.closed) await message.edit(panelPayload(s, ping)).catch(() => {});
+      }
     }
-  });
+  }).finally(() => { s.panelWork = null; });
   return s.panelWork;
 }

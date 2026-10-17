@@ -50,3 +50,12 @@ test('long queue titles and authors remain within Discord embed limits', () => {
   const s=session(); s.queue=Array.from({length:300},()=>({title:'_*'.repeat(200),author:'_*'.repeat(200),page:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}));
   const data=panelPayload(s); assert.ok(data.embeds[1].toJSON().description.length<=4096);
 });
+
+test('rapid panel refreshes coalesce while a Discord edit is pending', async () => {
+  const s=session(); let edits=0, release;
+  s.panel={ async edit() { edits++; if(edits===1) await new Promise(resolve=>{release=resolve;}); } };
+  const first=syncPanel(s); await Promise.resolve();
+  for(let n=0;n<50;n++) syncPanel(s);
+  assert.equal(edits,1); release(); await first;
+  assert.equal(edits,2); assert.equal(s.panelWork,null);
+});

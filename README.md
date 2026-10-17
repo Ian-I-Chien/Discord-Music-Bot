@@ -11,7 +11,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
 - Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and a paginated queue showing eight tracks per page.
-- Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every 15 seconds.
+- Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every second during playback and stops refreshing while paused. Pending edits are coalesced when Discord throttles updates.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
 - Up to 300 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
 - Supports live volume adjustment (0–100%). The test branch decodes and re-encodes Opus to apply volume, adding CPU work compared with the production passthrough path.
@@ -91,7 +91,7 @@ docker compose build --pull --no-cache
 docker compose up -d
 ```
 
-The image includes Node 24, a Python venv, yt-dlp, and FFmpeg. The current Opus playback path does not use FFmpeg. Volume processing uses the bundled OpusScript encoder/decoder. The ARM64 Docker build has not been verified; the existing Pi uses direct installation.
+The image includes Node 24, a Python venv, yt-dlp, FFmpeg, and the native Opus build toolchain. The current Opus playback path does not use FFmpeg. Volume processing uses native @discordjs/opus at 192 kbps. Native compilation requires a C/C++ toolchain, make, Python, and Node headers when a matching prebuilt binary is unavailable. The ARM64 Docker build has not been verified; the existing Pi uses direct installation.
 
 ## Existing Raspberry Pi deployment
 
