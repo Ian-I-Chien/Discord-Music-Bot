@@ -7,7 +7,7 @@ import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
-import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel } from './panel.js';
+import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel, refreshPlaybackProgress } from './panel.js';
 import { cancelRecovery, endedEarly, playbackSeconds, recoverPlayback } from './recovery.js';
 import { openRecoveryAudio } from './recovery-audio.js';
 import { watchEmptyChannel } from './empty-channel.js';
@@ -62,7 +62,9 @@ async function createSession(interaction, channel) {
   const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 50, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.emptyWatcher = watchEmptyChannel(s, { dispose });
-  s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
+  s.panelTimer = setInterval(() => {
+    void refreshPlaybackProgress(s, client.ws.ping).catch(error => console.warn('進度面板更新失敗：', error.code ?? error.name));
+  }, 1000);
   const finish = () => {
     rememberTrack(s); s.current = null; s.hasStarted = false; s.resource = null; s.playbackOffset = 0;
     s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.audioCleanup = null; void advance(s);

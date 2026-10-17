@@ -140,6 +140,13 @@ export function syncStartedTrackPanel(s, ping = 0) {
   return firstStart ? repostPanel(s, ping, { removePrevious: true, track: s.current }) : syncPanel(s, ping);
 }
 
+export function refreshPlaybackProgress(s, ping = 0) {
+  // Automatic ticks must not keep a slow REST worker alive indefinitely.
+  // Explicit user actions can still mark that worker dirty and update the view.
+  if (s.closed || !s.current || s.player.state.status !== 'playing' || s.panelWork) return Promise.resolve();
+  return syncPanel(s, ping);
+}
+
 export async function isActivePanel(s, messageId) {
   if (!s) return false;
   // Discord can display a sent message before its REST response updates s.panel.
