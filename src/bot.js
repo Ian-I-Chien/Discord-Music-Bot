@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, setVolume } from './controls.js';
-import { syncPanel, queueMetadata, queuePagination } from './panel.js';
+import { syncPanel, queueMetadata, queuePayload } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
@@ -92,27 +92,36 @@ async function handle(i, action = i.commandName) {
     return { session: s };
   }
   if (!s) throw new Error('目前沒有播放工作階段。');
+  if (action.startsWith('queue-page:')) {
+    const page = Number(action.slice('queue-page:'.length));
+    if (!Number.isInteger(page) || page < 0) throw new Error('頁碼無效。');
+    return { queueSession: s, page };
+  }
   switch (action) {
     case 'volume': setVolume(s, i.options.getInteger('percent', true)); return { session: s };
     case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
     case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
     case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';
     case 'leave': dispose(s); return '👋 已清空並離開。';
-    case 'page-prev': queuePagination(s, -1); return { session: s };
-    case 'page-next': queuePagination(s, 1); return { session: s };
-    case 'queue': s.queuePage = 0; return { session: s };
+    case 'queue': return { queueSession: s, page: 0 };
     default: throw new Error('未知指令。');
   }
 }
 client.on('interactionCreate', async i => {
   const button = i.isButton() && i.customId.startsWith('music:');
   if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
+  const queuePageButton = button && i.customId.startsWith('music:queue-page:');
   try {
-    await i.deferReply({ flags: 64 });
+    if (queuePageButton) await i.deferUpdate();
+    else await i.deferReply({ flags: 64 });
     const previous = locks.get(i.guildId) ?? Promise.resolve();
     const task = previous.catch(() => {}).then(async () => {
-      if (button && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+      if (button && !queuePageButton && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
       const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
+      if (result?.queueSession) {
+        await i.editReply(queuePayload(result.queueSession, result.page));
+        return;
+      }
       if (result?.session) {
         await updatePanel(result.session);
       }

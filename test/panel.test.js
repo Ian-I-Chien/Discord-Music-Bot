@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { panelPayload, time, syncPanel, queuePagination } from '../src/panel.js';
+import { panelPayload, time, syncPanel, queuePagination, queuePayload } from '../src/panel.js';
 function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
   const now = data.embeds[0].toJSON();
   assert.match(now.description, /01:05/); assert.match(now.description, /04:05/);
   assert.match(now.description, /https:\/\/www.youtube.com/); assert.ok(now.thumbnail.url);
-  assert.match(data.embeds[1].toJSON().description, /Song 4/);
-  assert.match(data.embeds[1].toJSON().footer.text, /第 1 \/ 1 頁/);
+  assert.equal(data.embeds.length,1);
+  assert.equal(data.components.length,1);
+  assert.ok(data.components[0].toJSON().components.some(c=>c.custom_id==='music:queue'));
+  assert.doesNotMatch(now.description,/Song 4/);
   assert.equal(data.components[0].toJSON().components[0].custom_id,'music:pause');
   assert.deepEqual(data.allowedMentions.parse, []);
 });
@@ -31,24 +33,29 @@ test('loading publishes no prompts; playback publishes only one clean panel', as
   await syncPanel(s); assert.equal(sends,1); assert.equal(edits,1);
 });
 
-test('queue pagination covers all tracks and clamps when queue shrinks', () => {
+test('private queue pages cover all tracks without affecting the public player', () => {
   const s=session(); s.queue=Array.from({length:300},(_,n)=>({title:`Track ${n+1}`,author:'Artist',duration:245}));
-  let data=panelPayload(s);
-  assert.match(data.embeds[1].toJSON().description,/Track 8/);
-  assert.doesNotMatch(data.embeds[1].toJSON().description,/Track 9/);
-  assert.equal(data.components[1].toJSON().components[0].disabled,true);
-  queuePagination(s,1); data=panelPayload(s);
-  assert.match(data.embeds[1].toJSON().description,/Track 9/);
-  assert.match(data.embeds[1].toJSON().footer.text,/第 2 \/ 38 頁/);
-  queuePagination(s,1000); data=panelPayload(s);
-  assert.match(data.embeds[1].toJSON().description,/Track 300/);
-  assert.equal(data.components[1].toJSON().components[2].disabled,true);
-  s.queue=s.queue.slice(0,2); panelPayload(s); assert.equal(s.queuePage,0);
-  s.closed=true; assert.ok(panelPayload(s).components.flatMap(r=>r.toJSON().components).every(c=>c.disabled));
+  let data=queuePayload(s,0);
+  assert.equal(data.embeds.length,1);
+  assert.match(data.embeds[0].toJSON().description,/Track 8/);
+  assert.doesNotMatch(data.embeds[0].toJSON().description,/Track 9/);
+  assert.equal(data.components[0].toJSON().components[0].disabled,true);
+  assert.equal(data.components[0].toJSON().components[2].custom_id,'music:queue-page:1');
+  data=queuePayload(s,1);
+  assert.match(data.embeds[0].toJSON().description,/Track 9/);
+  assert.match(data.embeds[0].toJSON().footer.text,/第 2 \/ 38 頁/);
+  data=queuePayload(s,1000);
+  assert.match(data.embeds[0].toJSON().description,/Track 300/);
+  assert.equal(data.components[0].toJSON().components[2].disabled,true);
+  assert.equal(s.queuePage,undefined);
+  s.queue=s.queue.slice(0,2); data=queuePayload(s,20);
+  assert.match(data.embeds[0].toJSON().footer.text,/第 1 \/ 1 頁/);
+  s.closed=true; assert.ok(queuePayload(s).components.flatMap(r=>r.toJSON().components).every(c=>c.disabled));
+  assert.equal(panelPayload(s).embeds.length,1);
 });
 test('long queue titles and authors remain within Discord embed limits', () => {
   const s=session(); s.queue=Array.from({length:300},()=>({title:'_*'.repeat(200),author:'_*'.repeat(200),page:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}));
-  const data=panelPayload(s); assert.ok(data.embeds[1].toJSON().description.length<=4096);
+  assert.ok(queuePayload(s).embeds[0].toJSON().description.length<=4096);
 });
 
 test('rapid panel refreshes coalesce while a Discord edit is pending', async () => {

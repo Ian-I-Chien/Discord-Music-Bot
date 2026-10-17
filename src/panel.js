@@ -30,6 +30,18 @@ export function panelPayload(s, ping = 0, disabled = false) {
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '佇列已播完，等待下一首歌曲。');
   now.setFooter({ text: `音量 ${s.volume ?? 100}%` });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(paused ? 'music:resume' : 'music:pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
+    new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
+    new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
+    new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
+  );
+  return { content: '', embeds: [now], components: [row], allowedMentions: { parse: [] } };
+}
+export function queuePayload(session, requestedPage = 0) {
+  // Each private queue view has its own page; never change shared playback state.
+  const s = { ...session, queuePage: requestedPage };
+  const ended = Boolean(s.closed);
   const { page, pages, start } = queuePagination(s);
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)
     .setDescription(s.queue.length ? s.queue.slice(start, start + QUEUE_PAGE_SIZE).map((t, n) => {
@@ -38,17 +50,12 @@ export function panelPayload(s, ping = 0, disabled = false) {
       return `**${String(start + n + 1).padStart(2, '0')}**  ${title(t, 70)}\n　 ${author}${duration}`;
     }).join('\n\n') : '目前沒有待播歌曲。')
     .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}` });
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(paused ? 'music:resume' : 'music:pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
-    new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
-    new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
-  );
   const pagination = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:page-prev').setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
+    new ButtonBuilder().setCustomId(`music:queue-page:${Math.max(0, page - 1)}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId('music:page-next').setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
+    new ButtonBuilder().setCustomId(`music:queue-page:${Math.min(pages - 1, page + 1)}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
   );
-  return { content: '', embeds: [now, queue], components: [row, pagination], allowedMentions: { parse: [] } };
+  return { content: '', embeds: [queue], components: [pagination], allowedMentions: { parse: [] } };
 }
 export async function queueMetadata(query) {
   if (!query.startsWith('https://www.youtube.com/watch?v=')) return { query };
