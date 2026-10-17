@@ -26,6 +26,7 @@ export async function applyVolumeCommand(session, percent, connect) {
 }
 
 export function togglePause(session, requested) {
+  if (session.recovery) throw new Error('正在恢復音源，請稍後再暫停或繼續。');
   const state = session.player.state.status;
   const paused = state === 'paused' || state === 'autopaused';
   const resume = requested === 'resume' || (requested === undefined && paused);

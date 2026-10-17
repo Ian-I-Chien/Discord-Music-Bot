@@ -19,7 +19,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
   const ended = s.closed || disabled;
   const paused = s.player.state.status === 'paused' || s.player.state.status === 'autopaused';
   const track = s.current;
-  const elapsed = (s.resource?.playbackDuration || 0) / 1000;
+  const elapsed = (s.playbackOffset || 0) + (s.resource?.playbackDuration || 0) / 1000;
   const fraction = track?.duration > 0 ? Math.min(1, elapsed / track.duration) : 0;
   const position = Math.floor(fraction * 12);
   const bar = '━'.repeat(position) + '●' + '─'.repeat(12 - position);
@@ -31,8 +31,8 @@ export function panelPayload(s, ping = 0, disabled = false) {
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
   now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true });
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || !s.history?.length),
-    new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
+    new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
+    new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
     new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
     new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
