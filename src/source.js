@@ -1,4 +1,49 @@
 import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
+
+// --lazy-playlist avoids collecting the entire list before emitting entries.
+export async function* streamPlaylist(input, limit = 300, { signal, spawnProcess = spawn } = {}) {
+  const url = playlistUrl(input);
+  if (!url) throw new Error('請提供 YouTube 歌單網址。');
+  signal?.throwIfAborted();
+  const child = spawnProcess(process.env.YTDLP_PATH || 'yt-dlp', ['--ignore-config', '--flat-playlist', '--lazy-playlist', '--yes-playlist', '--no-warnings', '--js-runtimes', 'node', '--ignore-errors', '--socket-timeout', '15', '--playlist-end', String(limit), '--dump-json', '--', url], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let failure; let count = 0; let timer; let bytes = 0;
+  const stop = error => { failure = error; child.kill('SIGKILL'); };
+  const resetTimer = () => { clearTimeout(timer); timer = setTimeout(() => stop(new Error('歌單讀取逾時，請稍後重試。')), 60000); };
+  const cancel = () => stop(signal.reason || new Error('歌單載入已取消。'));
+  const completion = new Promise(resolve => {
+    child.once('error', () => { failure = new Error('無法執行 yt-dlp。'); resolve(-1); });
+    child.once('close', resolve);
+  });
+  child.stderr.resume();
+  child.stdout.on('data', chunk => {
+    bytes += chunk.length;
+    if (bytes > 8_000_000) stop(new Error('歌單回應過大。'));
+  });
+  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  signal?.addEventListener('abort', cancel, { once: true });
+  resetTimer();
+  if (signal?.aborted) cancel();
+  try {
+    for await (const line of lines) {
+      if (failure) throw failure;
+      resetTimer();
+      let entry;
+      try { entry = JSON.parse(line); } catch { continue; }
+      if (!entry || !/^[\w-]{11}$/.test(entry.id) || entry.availability === 'private') continue;
+      const page = `https://www.youtube.com/watch?v=${entry.id}`;
+      count++;
+      yield { query: page, page, title: entry.title || 'YouTube', author: entry.uploader || entry.channel, duration: entry.duration };
+      if (count >= limit) return;
+    }
+    const code = await completion;
+    if (failure) throw failure;
+    if (code !== 0 || !count) throw new Error('無法完整讀取歌單；請確認歌單公開且包含可播放影片。');
+  } finally {
+    clearTimeout(timer); signal?.removeEventListener('abort', cancel); lines.close();
+    child.kill('SIGKILL');
+  }
+}
 export function normalizeQuery(input) {
   const value = input.trim();
   if (!value || value.length > 500) throw new Error('請輸入 1–500 字的歌名或 YouTube 連結。');

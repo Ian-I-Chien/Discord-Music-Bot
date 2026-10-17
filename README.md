@@ -10,6 +10,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 ## Features
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
+- Playlist and Mix entries load progressively: playback can start as soon as the first playable entry arrives, while the remaining entries join the queue in their original order. Later `/play` requests stay behind that import; `/playnext` retains priority. Leaving cancels background imports. Mixes remain limited to 20 entries and the waiting queue to 300 tracks. If a background import fails, already loaded tracks remain available; diagnostics stay in service logs.
 - A compact public Now Playing card with artwork, track link, artist or uploader, elapsed time, duration, and playback controls. Upcoming tracks are shown only on demand through `/queue` or the queue button, in a shared public paginated view with eight tracks per page. The queue stays hidden until requested and replaces the current-track view in the same shared message. A new track automatically restores Now Playing; `/now-playing` and the return button also restore it.
 - Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every second during playback and stops refreshing while paused. Pending edits are coalesced when Discord throttles updates.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
