@@ -1,0 +1,137 @@
+import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
+import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
+import { Readable } from 'node:stream';
+import { resolveTrack, normalizeQuery } from './source.js';
+import { registerCommands } from './commands.js';
+import { panelPayload, queueMetadata } from './panel.js';
+if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+const sessions = new Map();
+const options = { allowedMentions: { parse: [] } };
+function updatePanel(s) {
+  s.panelWork = (s.panelWork || Promise.resolve()).catch(() => {}).then(async () => {
+    if (s.panel) await s.panel.edit(panelPayload(s, client.ws.ping)).catch(() => {});
+  });
+  return s.panelWork;
+}
+function dispose(s) {
+  if (s.closed) return;
+  s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
+  if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
+  void updatePanel(s);
+}
+function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 120000); }
+async function advance(s) {
+  if (s.closed || s.loading || s.current) return;
+  s.loading = true; clearTimeout(s.idleTimer); void updatePanel(s);
+  try {
+    while (!s.closed && s.queue.length) {
+      const item = s.queue.shift(); const abort = new AbortController(); s.abort = abort;
+      const timer = setTimeout(() => abort.abort(), 90000);
+      try {
+        const track = await resolveTrack(item.query);
+        if (s.closed) return;
+        const response = await fetch(track.url, { signal: abort.signal });
+        if (!response.ok || !response.body) throw new Error('音訊下載失敗。');
+        s.stream = Readable.fromWeb(response.body);
+        s.stream.on('error', () => {});
+        const probe = await demuxProbe(s.stream);
+        if (s.closed) { probe.stream.destroy(); return; }
+        if (probe.type !== StreamType.WebmOpus && probe.type !== StreamType.OggOpus) throw new Error('音訊格式不符。');
+        clearTimeout(timer);
+        s.current = track;
+        s.resource = createAudioResource(probe.stream, { inputType: probe.type });
+        s.player.play(s.resource);
+        void updatePanel(s);
+        return;
+      } catch (error) {
+        abort.abort(); s.stream?.destroy();
+        if (!s.closed) void s.text.send({ content: `⚠️ ${error.message}`.slice(0, 1900), ...options }).catch(() => {});
+      } finally { clearTimeout(timer); }
+    }
+  } finally { s.loading = false; void updatePanel(s); if (!s.closed && !s.current) { if (s.queue.length) void advance(s); else idle(s); } }
+}
+async function createSession(interaction, channel) {
+  const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: true });
+  const s = { guildId: interaction.guildId, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], current: null, loading: false, closed: false, text: interaction.channel };
+  sessions.set(s.guildId, s); connection.subscribe(s.player);
+  s.panelTimer = setInterval(() => { if (s.current) void updatePanel(s); }, 15000);
+  s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
+  s.player.on('error', error => { console.error('播放器錯誤：', error.message); s.player.stop(true); });
+  connection.on('error', () => dispose(s));
+  connection.on(VoiceConnectionStatus.Disconnected, async () => {
+    try { await Promise.race([entersState(connection, VoiceConnectionStatus.Signalling, 5000), entersState(connection, VoiceConnectionStatus.Connecting, 5000)]); await entersState(connection, VoiceConnectionStatus.Ready, 20000); } catch { dispose(s); }
+  });
+  try { await entersState(connection, VoiceConnectionStatus.Ready, 20000); return s; } catch { dispose(s); throw new Error('加入語音頻道失敗，請檢查權限與 UDP 網路。'); }
+}
+// Serialize guild commands so simultaneous play requests retain arrival order.
+const locks = new Map();
+async function handle(i, action = i.commandName) {
+  const member = await i.guild.members.fetch(i.user.id); const channel = member.voice.channel;
+  if (!channel || channel.type !== 2) throw new Error('請先加入一般語音頻道。');
+  let s = sessions.get(i.guildId);
+  if (s && s.channelId !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
+  if (action === 'play') {
+    const me = await i.guild.members.fetchMe();
+    if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
+    if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
+    const query = (i.options.getString('link') ?? i.options.getString('query', true));
+    const normalized = normalizeQuery(query);
+    const input = normalized.startsWith('ytsearch1:') ? query : normalized;
+    if (!s) s = await createSession(i, channel);
+    if (s.queue.length >= 100) throw new Error('佇列上限為 100 首。');
+    const item = { query: input };
+    s.queue.push(item);
+    void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
+    void advance(s);
+    return { session: s };
+  }
+  if (!s) throw new Error('目前沒有播放工作階段。');
+  switch (action) {
+    case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
+    case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
+    case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';
+    case 'leave': dispose(s); return '👋 已清空並離開。';
+    case 'queue': return { session: s };
+    default: throw new Error('未知指令。');
+  }
+}
+client.on('interactionCreate', async i => {
+  const button = i.isButton() && i.customId.startsWith('music:');
+  if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
+  try {
+    if (button) await i.deferReply({ flags: 64 }); else await i.deferReply();
+    const previous = locks.get(i.guildId) ?? Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+      if (button && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+      const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
+      if (result?.session) {
+        const s = result.session;
+        const old = s.panel;
+        const message = await i.editReply(panelPayload(s, client.ws.ping));
+        s.panel = message;
+        if (old && old.id !== message.id) await old.edit(panelPayload(s, client.ws.ping, true)).catch(() => {});
+        await updatePanel(s);
+      } else await i.editReply({ content: result, ...options });
+    });
+    locks.set(i.guildId, task);
+    try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
+  } catch (error) { if (i.deferred) await i.editReply({ content: error.message.slice(0,1900), ...options }).catch(() => {}); }
+});
+client.once('clientReady', async c => {
+  try {
+    await registerCommands(c.application);
+    // Remove guild-scoped commands from the previous deployment, if configured.
+    const legacyGuild = process.env.DISCORD_GUILD_ID;
+    if (legacyGuild && c.guilds.cache.has(legacyGuild)) {
+      await c.application.commands.set([], legacyGuild);
+      console.log('已清除舊版單伺服器指令。');
+    }
+    console.log(`已登入 ${c.user.tag}，可在已邀請的伺服器使用 /play。`);
+  } catch (error) {
+    console.error('註冊指令失敗：', error.message);
+    c.destroy(); process.exitCode = 1;
+  }
+});
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { for (const s of sessions.values()) dispose(s); client.destroy(); process.exit(0); });
+await client.login(process.env.DISCORD_TOKEN);
