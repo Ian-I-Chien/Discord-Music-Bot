@@ -36,6 +36,7 @@ test('matching rejects covers, wrong artist, wrong duration and prefers official
   assert.equal(matchSpotifyTrack(metadata, [{ ...base, title: base.title + ' cover' }, { ...base, duration: 400 }, base, audio]).id, audio.id);
   assert.throws(() => matchSpotifyTrack(metadata, [{ ...base, title: 'Other Artist - Never Gonna Give You Up', uploader: 'Other Artist' }]));
   assert.throws(() => matchSpotifyTrack(metadata, [{ ...base, title: base.title + ' Live' }]));
+  assert.throws(() => matchSpotifyTrack(metadata, [{ ...base, duration: 200 }]));
   assert.equal(matchSpotifyTrack({ ...metadata, title: metadata.title + ' Live' }, [{ ...base, title: base.title + ' Live' }]).id, base.id);
 });
 test('Spotify selection resolves an actual YouTube track with cancellation and attribution', async () => {

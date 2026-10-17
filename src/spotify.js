@@ -89,7 +89,7 @@ export function matchSpotifyTrack(track, candidates) {
     const artistMatch = track.artists.some(artist => compact(text).includes(compact(artist)));
     const distance = Math.abs(Number(candidate.duration) - track.duration);
     // Reject uncertain matches instead of silently taking the first search hit.
-    if ((!titleMatch && coverage < 0.8) || !artistMatch || !Number.isFinite(distance) || distance > Math.min(25, Math.max(12, track.duration * 0.08))) return [];
+    if ((!titleMatch && coverage < 0.8) || !artistMatch || !Number.isFinite(distance) || distance > Math.min(15, Math.max(8, track.duration * 0.04))) return [];
     return [{ candidate, score: (titleMatch ? 50 : coverage * 40) + 30 - distance + (/official audio|官方音源|\btopic\b/i.test(text) ? 8 : /official|官方/i.test(text) ? 4 : 0) }];
   }).sort((a, b) => b.score - a.score);
   if (!ranked.length) throw new Error('找不到可靠的 YouTube 對應版本，請改貼 YouTube 連結。');
@@ -97,7 +97,7 @@ export function matchSpotifyTrack(track, candidates) {
 }
 
 export async function resolveSpotifyTrack(metadata, { signal, search = searchCandidates, resolve = resolveTrack } = {}) {
-  const candidates = await search(`${metadata.artists.join(' ')} ${metadata.title}`, { signal });
+  const candidates = await search(`${metadata.artists.join(' ')} ${metadata.title} official audio`, { signal });
   const match = matchSpotifyTrack(metadata, candidates);
   const track = await resolve(`https://www.youtube.com/watch?v=${match.id}`, { signal });
   return { ...track, spotify: metadata };
