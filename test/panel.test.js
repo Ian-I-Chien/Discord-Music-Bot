@@ -113,7 +113,7 @@ test('track replacement send failures leave the original panel intact', async ()
   const s=session();s.hasStarted=false;let deleted=false;
   const old={async delete(){deleted=true;}};s.panel=old;
   s.text={async send(){throw new Error('Network failure');}};
-  await assert.rejects(syncStartedTrackPanel(s),/無法顯示播放面板/);
+  await assert.rejects(syncStartedTrackPanel(s),/播放面板顯示失敗/);
   assert.equal(deleted,false);assert.equal(s.panel,old);assert.equal(s.panelRemovePrevious,false);
 });
 
@@ -160,7 +160,7 @@ test('failed replacement retains the existing panel and controls', async () => {
   const s = session(); let retired = false;
   const old = { async edit() { retired = true; } }; s.panel = old;
   s.text = { async send() { throw new Error('Network error'); } };
-  await assert.rejects(repostPanel(s), /無法顯示播放面板/);
+  await assert.rejects(repostPanel(s), /播放面板顯示失敗/);
   assert.equal(s.panel, old); assert.equal(retired, false); assert.equal(s.panelRepost, false);
 });
 
@@ -188,9 +188,27 @@ test('explicit queue opens while the next audio source is loading', async () => 
 
 test('queue reports failed edits instead of silently acknowledging success', async () => {
   const s = session();
-  s.panel = { async edit() { throw new Error('Missing Permissions'); } };
+  s.panel = { async edit() { throw Object.assign(new Error('Missing Permissions'), {code:50013}); } };
   await assert.rejects(syncQueue(s, 0), /無法更新播放面板/);
   s.panel = { async edit() {} };
   await syncQueue(s, 0);
   assert.equal(s.panelError, null);
+});
+
+
+test('queue buttons have unique IDs even for empty and single-page queues', () => {
+  for (const count of [0, 1, 8, 9, 16, 17]) {
+    const s = session(); s.queue = Array.from({length:count},(_,n)=>({title:`Song ${n}`}));
+    for (let page=0; page<Math.max(1, Math.ceil(count/8)); page++) {
+      const buttons = queuePayload(s,page).components.flatMap(row=>row.toJSON().components);
+      const ids=buttons.map(button=>button.custom_id);
+      assert.equal(new Set(ids).size, ids.length, `count=${count} page=${page}`);
+    }
+  }
+});
+
+test('invalid panel payload errors do not falsely blame permissions', async () => {
+  const s=session();
+  s.panel={async edit(){throw Object.assign(new Error('Invalid Form Body'),{code:50035});}};
+  await assert.rejects(syncQueue(s,0),error=> !error.message.includes('權限') && error.message.includes('更新失敗'));
 });

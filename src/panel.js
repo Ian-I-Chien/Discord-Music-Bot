@@ -53,9 +53,9 @@ export function queuePayload(session, requestedPage = 0) {
     }).join('\n\n') : '目前沒有待播歌曲。')
     .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}` });
   const pagination = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`music:queue-page:${Math.max(0, page - 1)}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
+    new ButtonBuilder().setCustomId(page === 0 ? 'music:queue-start' : `music:queue-page:${page - 1}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId(`music:queue-page:${Math.min(pages - 1, page + 1)}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
+    new ButtonBuilder().setCustomId(page >= pages - 1 ? 'music:queue-end' : `music:queue-page:${page + 1}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
     new ButtonBuilder().setCustomId('music:player-view').setLabel('回到播放').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
   );
   return { content: '', embeds: [queue], components: [pagination], allowedMentions: { parse: [] } };
@@ -84,7 +84,7 @@ export function syncPanel(s, ping = 0) {
       if (s.panel && !s.panelRepost) {
         const edited = await s.panel.edit(payload).then(() => true).catch(error => {
           console.error('面板更新失敗：', error.code ?? error.name, error.message);
-          s.panelError = new Error('無法更新播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
+          s.panelError = new Error([50001, 50013].includes(error.code) ? '無法更新播放面板，請確認機器人的檢視頻道、傳送訊息與嵌入連結權限。' : '播放面板更新失敗，請稍後重試。');
           return false;
         });
         if (edited) { s.panelSignature = signature; s.panelError = null; }
@@ -94,7 +94,7 @@ export function syncPanel(s, ping = 0) {
         const removePrevious = s.panelRemovePrevious;
         const message = await s.text.send(payload).catch(error => {
           console.error('面板傳送失敗：', error.code ?? error.name, error.message);
-          s.panelError = new Error('無法顯示播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
+          s.panelError = new Error([50001, 50013].includes(error.code) ? '無法顯示播放面板，請確認機器人的檢視頻道、傳送訊息與嵌入連結權限。' : '播放面板顯示失敗，請稍後重試。');
           return null;
         });
         if (message) {
