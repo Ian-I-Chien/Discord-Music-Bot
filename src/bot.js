@@ -1,7 +1,8 @@
 import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
-import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
+import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
+import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, setVolume } from './controls.js';
 import { syncPanel, queueMetadata, queuePayload } from './panel.js';
@@ -15,6 +16,8 @@ function dispose(s) {
   s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
+  s.leaveTask = sendVoiceLeave(client.guilds.cache.get(s.guildId)).catch(() => {});
+  return s.leaveTask;
 }
 function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 120000); }
 async function advance(s) {
@@ -91,6 +94,13 @@ async function handle(i, action = i.commandName) {
     void advance(s);
     return { session: s };
   }
+  if (!s && action === 'leave') {
+    const connectedChannel = i.guild.members.me?.voice.channelId;
+    if (connectedChannel && connectedChannel !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
+    getVoiceConnection(i.guildId)?.destroy();
+    await sendVoiceLeave(i.guild);
+    return;
+  }
   if (!s) throw new Error('目前沒有播放工作階段。');
   if (action.startsWith('queue-page:')) {
     const page = Number(action.slice('queue-page:'.length));
@@ -133,6 +143,7 @@ client.on('interactionCreate', async i => {
 });
 client.once('clientReady', async c => {
   try {
+    await Promise.allSettled([...c.guilds.cache.values()].filter(g => g.members.me?.voice.channelId).map(sendVoiceLeave));
     await registerCommands(c.application);
     // Remove guild-scoped commands from the previous deployment, if configured.
     const legacyGuild = process.env.DISCORD_GUILD_ID;
@@ -146,5 +157,11 @@ client.once('clientReady', async c => {
     c.destroy(); process.exitCode = 1;
   }
 });
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { for (const s of sessions.values()) dispose(s); client.destroy(); process.exit(0); });
+let shuttingDown = false;
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await Promise.allSettled([...sessions.values()].map(dispose));
+  client.destroy(); process.exit(0);
+});
 await client.login(process.env.DISCORD_TOKEN);
