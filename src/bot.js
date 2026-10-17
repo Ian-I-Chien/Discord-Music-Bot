@@ -7,7 +7,7 @@ import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
-import { syncPanel, queueMetadata, syncQueue, repostPanel } from './panel.js';
+import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel } from './panel.js';
 import { cancelRecovery, endedEarly, playbackSeconds, recoverPlayback } from './recovery.js';
 import { openRecoveryAudio } from './recovery-audio.js';
 import { watchEmptyChannel } from './empty-channel.js';
@@ -78,7 +78,11 @@ async function createSession(interaction, channel) {
     else if (endedEarly(s)) recover();
     else finish();
   });
-  s.player.on(AudioPlayerStatus.Playing, () => { if (!s.hasStarted) s.panelView = 'now'; s.hasStarted = true; void updatePanel(s); });
+  s.player.on(AudioPlayerStatus.Playing, () => {
+    void syncStartedTrackPanel(s, client.ws.ping).then(() => syncChannelStatus(s)).catch(error => {
+      console.error('換歌面板更新失敗：', error.code ?? error.name, error.message);
+    });
+  });
   s.player.on('error', error => {
     console.error('播放器錯誤：', JSON.stringify({ title: s.current?.title, seconds: playbackSeconds(s), error: error.message, cause: error.cause?.code }));
     if (!s.closed && !s.recovery && error.resource === s.resource) recover();
