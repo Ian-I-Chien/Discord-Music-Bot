@@ -1,1 +1,22 @@
-{"name":"youtube-discord-bot","version":"1.0.0","private":true,"type":"module","engines":{"node":">=22.12.0"},"scripts":{"start":"node --env-file=.env src/bot.js","register":"node --env-file=.env src/register.js","test":"node --test"},"dependencies":{"@discordjs/voice":"0.19.2","discord.js":"14.27.0"}}
+{
+  "name": "youtube-discord-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "node --env-file=.env src/bot.js",
+    "register": "node --env-file=.env src/register.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@discordjs/opus": "0.10.0",
+    "@discordjs/voice": "0.19.2",
+    "discord.js": "14.27.0"
+  },
+  "overrides": {
+    "tar": "7.5.22"
+  }
+}

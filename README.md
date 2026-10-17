@@ -9,18 +9,18 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 
 ## Features
 
-- Play individual YouTube URLs or search by song name. Search selects the first result and does not guarantee an official recording.
-- Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and the next three tracks.
-- Pause/resume, skip, and stop buttons. Progress refreshes every 15 seconds.
+- Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
+- Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and a paginated queue showing eight tracks per page.
+- Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every second during playback and stops refreshing while paused. Pending edits are coalesced when Discord throttles updates.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
-- Up to 100 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
-- Sends WebM Opus audio without re-encoding in the bot, reducing CPU usage on Raspberry Pi.
+- Up to 300 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
+- Supports live volume adjustment (0–100%). The test branch decodes and re-encodes Opus to apply volume, adding CPU work compared with the production passthrough path.
 
 ## Development and environments
 
 `main` is the only persistent branch. Production and test deployments use the same source revision from `main`, with separate local tokens, directories, and services. Create your own feature branch when developing, validate it in the test environment, and merge it into `main` when ready. There is no permanent `test` branch.
 
-The current `main` enables self-deafening when joining voice. No real tokens or `.env` files are included in this repository.
+The current `main` enables self-deafening when joining voice. This development branch disables self-deafening in the test deployment, imports YouTube playlists and Mix snapshots (including video URLs with a `list` parameter), and publishes the player panel only after audio playback begins. Loading messages, queue-import notices, and technical diagnostics are not posted publicly. Successful command acknowledgements are dismissed; command errors are private to the requester. No real tokens or `.env` files are included in this repository.
 
 ## Create and invite your bot
 
@@ -65,13 +65,15 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | Command | Action |
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
+| `/playnext link:<URL or song name>` | Insert a single track at the front of the waiting queue without interrupting the current song |
+| `/volume percent:<0–100>` | Set playback volume immediately; 0 mutes, 100 is original level |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/skip` | Skip the current track |
 | `/queue` | Display the playback panel and upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, YouTube playlists, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Mix links import a finite snapshot of currently available recommendations; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 
@@ -89,7 +91,7 @@ docker compose build --pull --no-cache
 docker compose up -d
 ```
 
-The image includes Node 24, a Python venv, yt-dlp, and FFmpeg. The current direct Opus playback path does not use FFmpeg. The ARM64 Docker build has not been verified; the existing Pi uses direct installation.
+The image includes Node 24, a Python venv, yt-dlp, FFmpeg, and the native Opus build toolchain. The current Opus playback path does not use FFmpeg. Volume processing uses native @discordjs/opus at 192 kbps. Native compilation requires a C/C++ toolchain, make, Python, and Node headers when a matching prebuilt binary is unavailable. The ARM64 Docker build has not been verified; the existing Pi uses direct installation.
 
 ## Existing Raspberry Pi deployment
 

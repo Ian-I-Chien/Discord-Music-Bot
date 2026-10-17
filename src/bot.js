@@ -1,19 +1,15 @@
 import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
-import { resolveTrack, normalizeQuery } from './source.js';
+import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { registerCommands } from './commands.js';
-import { panelPayload, queueMetadata } from './panel.js';
+import { MAX_QUEUE, enqueueTrack, setVolume } from './controls.js';
+import { syncPanel, queueMetadata, queuePagination } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
-function updatePanel(s) {
-  s.panelWork = (s.panelWork || Promise.resolve()).catch(() => {}).then(async () => {
-    if (s.panel) await s.panel.edit(panelPayload(s, client.ws.ping)).catch(() => {});
-  });
-  return s.panelWork;
-}
+function updatePanel(s) { return syncPanel(s, client.ws.ping); }
 function dispose(s) {
   if (s.closed) return;
   s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
@@ -39,24 +35,27 @@ async function advance(s) {
         if (s.closed) { probe.stream.destroy(); return; }
         if (probe.type !== StreamType.WebmOpus && probe.type !== StreamType.OggOpus) throw new Error('音訊格式不符。');
         clearTimeout(timer);
-        s.current = track;
-        s.resource = createAudioResource(probe.stream, { inputType: probe.type });
+        s.current = track; s.hasStarted = false;
+        s.resource = createAudioResource(probe.stream, { inputType: probe.type, inlineVolume: true });
+        s.resource.volume.setVolume((s.volume ?? 100) / 100);
+        s.resource.encoder?.setBitrate(192000);
         s.player.play(s.resource);
         void updatePanel(s);
         return;
       } catch (error) {
         abort.abort(); s.stream?.destroy();
-        if (!s.closed) void s.text.send({ content: `⚠️ ${error.message}`.slice(0, 1900), ...options }).catch(() => {});
+        if (!s.closed) console.warn('音源播放失敗：', error.message);
       } finally { clearTimeout(timer); }
     }
   } finally { s.loading = false; void updatePanel(s); if (!s.closed && !s.current) { if (s.queue.length) void advance(s); else idle(s); } }
 }
 async function createSession(interaction, channel) {
-  const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: true });
-  const s = { guildId: interaction.guildId, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], current: null, loading: false, closed: false, text: interaction.channel };
+  const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
+  const s = { guildId: interaction.guildId, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 100, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
-  s.panelTimer = setInterval(() => { if (s.current) void updatePanel(s); }, 15000);
-  s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
+  s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
+  s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
+  s.player.on(AudioPlayerStatus.Playing, () => { s.hasStarted = true; void updatePanel(s); });
   s.player.on('error', error => { console.error('播放器錯誤：', error.message); s.player.stop(true); });
   connection.on('error', () => dispose(s));
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -71,28 +70,37 @@ async function handle(i, action = i.commandName) {
   if (!channel || channel.type !== 2) throw new Error('請先加入一般語音頻道。');
   let s = sessions.get(i.guildId);
   if (s && s.channelId !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
-  if (action === 'play') {
+  if (action === 'play' || action === 'playnext') {
     const me = await i.guild.members.fetchMe();
     if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
     if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
     const query = (i.options.getString('link') ?? i.options.getString('query', true));
-    const normalized = normalizeQuery(query);
+    const list = action === 'playnext' ? null : playlistUrl(query);
+    const normalized = list || normalizeQuery(query);
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
-    if (s.queue.length >= 100) throw new Error('佇列上限為 100 首。');
-    const item = { query: input };
-    s.queue.push(item);
-    void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
+    if (s.queue.length >= MAX_QUEUE) throw new Error('佇列已滿，請稍後再試。');
+    if (list) {
+      const playlist = await expandPlaylist(list, MAX_QUEUE - s.queue.length);
+      s.queue.push(...playlist.items);
+    } else {
+      const item = { query: input };
+      enqueueTrack(s, item, action === 'playnext');
+      void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
+    }
     void advance(s);
     return { session: s };
   }
   if (!s) throw new Error('目前沒有播放工作階段。');
   switch (action) {
+    case 'volume': setVolume(s, i.options.getInteger('percent', true)); return { session: s };
     case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
     case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
     case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';
     case 'leave': dispose(s); return '👋 已清空並離開。';
-    case 'queue': return { session: s };
+    case 'page-prev': queuePagination(s, -1); return { session: s };
+    case 'page-next': queuePagination(s, 1); return { session: s };
+    case 'queue': s.queuePage = 0; return { session: s };
     default: throw new Error('未知指令。');
   }
 }
@@ -100,19 +108,15 @@ client.on('interactionCreate', async i => {
   const button = i.isButton() && i.customId.startsWith('music:');
   if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
   try {
-    if (button) await i.deferReply({ flags: 64 }); else await i.deferReply();
+    await i.deferReply({ flags: 64 });
     const previous = locks.get(i.guildId) ?? Promise.resolve();
     const task = previous.catch(() => {}).then(async () => {
       if (button && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
       const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
       if (result?.session) {
-        const s = result.session;
-        const old = s.panel;
-        const message = await i.editReply(panelPayload(s, client.ws.ping));
-        s.panel = message;
-        if (old && old.id !== message.id) await old.edit(panelPayload(s, client.ws.ping, true)).catch(() => {});
-        await updatePanel(s);
-      } else await i.editReply({ content: result, ...options });
+        await updatePanel(result.session);
+      }
+      await i.deleteReply().catch(() => {});
     });
     locks.set(i.guildId, task);
     try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
