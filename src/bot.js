@@ -10,6 +10,7 @@ import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, toggl
 import { syncPanel, queueMetadata, syncQueue, repostPanel } from './panel.js';
 import { cancelRecovery, endedEarly, playbackSeconds, recoverPlayback } from './recovery.js';
 import { openRecoveryAudio } from './recovery-audio.js';
+import { watchEmptyChannel } from './empty-channel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
@@ -17,7 +18,7 @@ const options = { allowedMentions: { parse: [] } };
 function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
+  s.closed = true; s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
   s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
@@ -60,6 +61,7 @@ async function createSession(interaction, channel) {
   const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
   const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 50, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
+  s.emptyWatcher = watchEmptyChannel(s, { dispose });
   s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
   const finish = () => {
     rememberTrack(s); s.current = null; s.hasStarted = false; s.resource = null; s.playbackOffset = 0;
@@ -85,8 +87,12 @@ async function createSession(interaction, channel) {
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
     try { await Promise.race([entersState(connection, VoiceConnectionStatus.Signalling, 5000), entersState(connection, VoiceConnectionStatus.Connecting, 5000)]); await entersState(connection, VoiceConnectionStatus.Ready, 20000); } catch { dispose(s); }
   });
-  try { await entersState(connection, VoiceConnectionStatus.Ready, 20000); return s; } catch { dispose(s); throw new Error('加入語音頻道失敗，請檢查權限與 UDP 網路。'); }
+  try { await entersState(connection, VoiceConnectionStatus.Ready, 20000); s.emptyWatcher.refresh(); return s; } catch { dispose(s); throw new Error('加入語音頻道失敗，請檢查權限與 UDP 網路。'); }
 }
+client.on('voiceStateUpdate', (before, after) => {
+  const session = sessions.get(after.guild.id);
+  if (session && [before.channelId, after.channelId].includes(session.channelId)) session.emptyWatcher?.refresh();
+});
 // Serialize guild commands so simultaneous play requests retain arrival order.
 const locks = new Map();
 async function handle(i, action = i.commandName) {
