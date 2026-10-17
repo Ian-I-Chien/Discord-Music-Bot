@@ -24,12 +24,12 @@ export function panelPayload(s, ping = 0, disabled = false) {
   const position = Math.floor(fraction * 12);
   const bar = '━'.repeat(position) + '●' + '─'.repeat(12 - position);
   const now = new EmbedBuilder().setColor(ended ? 0x747f8d : 0xc87941)
-    .setTitle(ended ? '播放結束' : paused ? '已暫停' : '正在播放');
+    .setTitle(ended ? '播放結束' : !track ? '音樂播放器' : paused ? '已暫停' : '正在播放');
   if (track) {
     now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`${bar}\`\n\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
-  } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '佇列已播完，等待下一首歌曲。');
-  now.setFooter({ text: `音量 ${s.volume ?? 100}%` });
+  } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
+  now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 100}%**`, inline: true });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(paused ? 'music:resume' : 'music:pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track),
     new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
@@ -44,6 +44,7 @@ export function queuePayload(session, requestedPage = 0) {
   const ended = Boolean(s.closed);
   const { page, pages, start } = queuePagination(s);
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)
+    .addFields({ name: '音量', value: `🔊 **${s.volume ?? 100}%**`, inline: true })
     .setDescription(s.queue.length ? s.queue.slice(start, start + QUEUE_PAGE_SIZE).map((t, n) => {
       const author = escapeMarkdown(String(t.author || 'YouTube').replace(/\s+/g, ' ').slice(0,50));
       const duration = t.duration > 0 ? ` · ${time(t.duration)}` : '';
@@ -75,7 +76,7 @@ export function syncPanel(s, ping = 0) {
     // Keep at most one in-flight edit and coalesce updates during API rate limits.
     while (s.panelDirty) {
       s.panelDirty = false;
-      if (!s.closed && !s.hasStarted) continue;
+      if (!s.closed && !s.hasStarted && !s.showIdlePanel) continue;
       const payload = !s.closed && s.panelView === 'queue' ? queuePayload(s, s.queuePage || 0) : panelPayload(s, ping);
       const signature = JSON.stringify(payload);
       if (signature === s.panelSignature) continue;

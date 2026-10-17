@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
-import { MAX_QUEUE, enqueueTrack, setVolume, playlistImportLimit } from './controls.js';
+import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit } from './controls.js';
 import { syncPanel, queueMetadata, syncQueue } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
@@ -22,7 +22,7 @@ function dispose(s) {
 function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 180000); }
 async function advance(s) {
   if (s.closed || s.loading || s.current) return;
-  s.loading = true; clearTimeout(s.idleTimer); void updatePanel(s);
+  s.loading = true; s.showIdlePanel = false; clearTimeout(s.idleTimer); void updatePanel(s);
   try {
     while (!s.closed && s.queue.length) {
       const item = s.queue.shift(); const abort = new AbortController(); s.abort = abort;
@@ -95,6 +95,16 @@ async function handle(i, action = i.commandName) {
     void advance(s);
     return { session: s };
   }
+  if (action === 'volume') {
+    if (!s) {
+      const me = await i.guild.members.fetchMe();
+      if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
+      if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
+    }
+    s = await applyVolumeCommand(s, i.options.getInteger('percent', true), () => createSession(i, channel));
+    if (!s.current && !s.loading && !s.queue.length) idle(s);
+    return { session: s };
+  }
   if (!s && action === 'leave') {
     const connectedChannel = i.guild.members.me?.voice.channelId;
     if (connectedChannel && connectedChannel !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
@@ -110,7 +120,6 @@ async function handle(i, action = i.commandName) {
   }
   switch (action) {
     case 'now-playing': s.panelView = 'now'; return { session: s };
-    case 'volume': setVolume(s, i.options.getInteger('percent', true)); return { session: s };
     case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
     case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
     case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';

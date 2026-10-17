@@ -66,7 +66,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
 | `/playnext link:<URL or song name>` | Insert a single track at the front of the waiting queue without interrupting the current song |
-| `/volume percent:<0–100>` | Set playback volume immediately; 0 mutes, 100 is original level |
+| `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/skip` | Skip the current track |
