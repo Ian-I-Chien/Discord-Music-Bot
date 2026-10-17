@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
-import { resolveTrack, normalizeQuery } from './source.js';
+import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
 import { registerCommands } from './commands.js';
 import { panelPayload, queueMetadata } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
@@ -39,7 +39,7 @@ async function advance(s) {
         if (s.closed) { probe.stream.destroy(); return; }
         if (probe.type !== StreamType.WebmOpus && probe.type !== StreamType.OggOpus) throw new Error('音訊格式不符。');
         clearTimeout(timer);
-        s.current = track;
+        s.current = track; s.hasStarted = false;
         s.resource = createAudioResource(probe.stream, { inputType: probe.type });
         s.player.play(s.resource);
         void updatePanel(s);
@@ -52,11 +52,12 @@ async function advance(s) {
   } finally { s.loading = false; void updatePanel(s); if (!s.closed && !s.current) { if (s.queue.length) void advance(s); else idle(s); } }
 }
 async function createSession(interaction, channel) {
-  const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: true });
+  const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
   const s = { guildId: interaction.guildId, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.panelTimer = setInterval(() => { if (s.current) void updatePanel(s); }, 15000);
-  s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
+  s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
+  s.player.on(AudioPlayerStatus.Playing, () => { s.hasStarted = true; void updatePanel(s); });
   s.player.on('error', error => { console.error('播放器錯誤：', error.message); s.player.stop(true); });
   connection.on('error', () => dispose(s));
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -76,13 +77,21 @@ async function handle(i, action = i.commandName) {
     if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
     if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
     const query = (i.options.getString('link') ?? i.options.getString('query', true));
-    const normalized = normalizeQuery(query);
+    const list = playlistUrl(query);
+    const normalized = list || normalizeQuery(query);
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
     if (s.queue.length >= 100) throw new Error('佇列上限為 100 首。');
-    const item = { query: input };
-    s.queue.push(item);
-    void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
+    if (list) {
+      const playlist = await expandPlaylist(list, 100 - s.queue.length);
+      s.queue.push(...playlist.items);
+      s.notice = `已加入歌單「${playlist.title}」${playlist.items.length} 首${playlist.truncated ? '（達佇列上限，其餘未加入）' : ''}。`;
+    } else {
+      const item = { query: input };
+      s.queue.push(item);
+      s.notice = '已加入歌曲。';
+      void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
+    }
     void advance(s);
     return { session: s };
   }

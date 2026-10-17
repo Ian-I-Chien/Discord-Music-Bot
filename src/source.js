@@ -33,3 +33,40 @@ export function resolveTrack(query) {
     });
   });
 }
+
+export function playlistUrl(input) {
+  let url;
+  try { url = new URL(input.trim()); } catch { return null; }
+  if (!['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(url.hostname.toLowerCase())) return null;
+  const id = url.searchParams.get('list');
+  if (!id) return null;
+  if (!/^[\w-]{2,150}$/.test(id)) throw new Error('YouTube 歌單網址無效。');
+  if (id.startsWith('RD')) {
+    const seed = url.searchParams.get('v') || id.slice(2);
+    if (/^[\w-]{11}$/.test(seed)) return `https://www.youtube.com/watch?v=${seed}&list=${id}`;
+  }
+  return `https://www.youtube.com/playlist?list=${id}`;
+}
+export function expandPlaylist(input, limit = 100) {
+  const url = playlistUrl(input);
+  if (!url) throw new Error('請提供 YouTube 歌單網址。');
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.env.YTDLP_PATH || 'yt-dlp', ['--ignore-config', '--flat-playlist', '--yes-playlist', '--js-runtimes', 'node', '--ignore-errors', '--socket-timeout', '15', '--playlist-end', String(limit + 1), '--dump-single-json', '--', url], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = ''; let settled = false;
+    const finish = (error, value) => { if (settled) return; settled = true; clearTimeout(timer); error ? reject(error) : resolve(value); };
+    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new Error('歌單讀取逾時，請稍後重試。')); }, 60000);
+    child.stdout.on('data', chunk => { out += chunk; if (out.length > 8_000_000) { child.kill('SIGKILL'); finish(new Error('歌單回應過大。')); } });
+    child.stderr.resume();
+    child.on('error', () => finish(new Error('無法執行 yt-dlp。')));
+    child.on('close', () => {
+      if (settled) return;
+      try {
+        const data = JSON.parse(out);
+        const entries = (data.entries || []).filter(e => e && /^[\w-]{11}$/.test(e.id) && e.availability !== 'private');
+        const items = entries.slice(0, limit).map(e => ({ query: `https://www.youtube.com/watch?v=${e.id}`, page: `https://www.youtube.com/watch?v=${e.id}`, title: e.title || 'YouTube', author: e.uploader || e.channel, duration: e.duration }));
+        if (!items.length) throw new Error();
+        finish(null, { title: data.title || 'YouTube 歌單', items, truncated: entries.length > limit });
+      } catch { finish(new Error('無法讀取歌單；請確認歌單公開且包含可播放影片。')); }
+    });
+  });
+}

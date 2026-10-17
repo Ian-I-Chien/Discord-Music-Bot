@@ -9,7 +9,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 
 ## Features
 
-- Play individual YouTube URLs or search by song name. Search selects the first result and does not guarantee an official recording.
+- Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
 - Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and the next three tracks.
 - Pause/resume, skip, and stop buttons. Progress refreshes every 15 seconds.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
@@ -20,7 +20,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 
 `main` is the only persistent branch. Production and test deployments use the same source revision from `main`, with separate local tokens, directories, and services. Create your own feature branch when developing, validate it in the test environment, and merge it into `main` when ready. There is no permanent `test` branch.
 
-The current `main` enables self-deafening when joining voice. No real tokens or `.env` files are included in this repository.
+The current `main` enables self-deafening when joining voice. This development branch disables self-deafening in the test deployment, imports YouTube playlists and Mix snapshots (including video URLs with a `list` parameter), and waits until audio playback begins before showing the full player panel. No real tokens or `.env` files are included in this repository.
 
 ## Create and invite your bot
 
@@ -71,7 +71,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | `/queue` | Display the playback panel and upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, YouTube playlists, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Mix links import a finite snapshot of currently available recommendations; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 100 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 

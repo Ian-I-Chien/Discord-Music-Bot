@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { panelPayload, time } from '../src/panel.js';
-function session() { return { player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
+function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
   const now = data.embeds[0].toJSON();
@@ -17,4 +17,12 @@ test('paused and ended panels reflect state and disable old controls', () => {
   s.closed=true;
   assert.ok(panelPayload(s).components[0].toJSON().components.every(c=>c.disabled));
   assert.equal(time(NaN),'--:--'); assert.equal(time(3601),'1:00:01');
+});
+
+test('buffering does not show a now-playing card before audio starts', () => {
+  const s=session(); s.hasStarted=false; s.loading=true;
+  const data=panelPayload(s);
+  assert.equal(data.embeds.length,0);
+  assert.equal(data.components.length,0);
+  assert.match(data.content,/載入/);
 });

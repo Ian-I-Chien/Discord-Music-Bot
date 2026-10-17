@@ -10,6 +10,9 @@ function title(track) {
 }
 export function panelPayload(s, ping = 0, disabled = false) {
   const ended = s.closed || disabled;
+  if (!ended && !s.hasStarted && (s.loading || s.current || s.queue.length)) {
+    return { content: `⏳ 正在載入音訊，開始播放後會顯示面板。${s.notice ? `\n${s.notice}` : ''}`, embeds: [], components: [], allowedMentions: { parse: [] } };
+  }
   const paused = s.player.state.status === 'paused' || s.player.state.status === 'autopaused';
   const track = s.current;
   const elapsed = (s.resource?.playbackDuration || 0) / 1000;
@@ -30,7 +33,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
-  return { content: '', embeds: [now, queue], components: [row], allowedMentions: { parse: [] } };
+  return { content: s.notice || '', embeds: [now, queue], components: [row], allowedMentions: { parse: [] } };
 }
 export async function queueMetadata(query) {
   if (!query.startsWith('https://www.youtube.com/watch?v=')) return { query };
