@@ -10,3 +10,5 @@ test('global guild-only play command requires link and no application ID configu
   await registerCommands({ commands: { async set(body) { registered = body; } } });
   assert.equal(registered, commands);
 });
+
+test('now-playing command is available in guilds',()=>{assert.deepEqual(commands.find(c=>c.name==='now-playing').contexts,[0]);});

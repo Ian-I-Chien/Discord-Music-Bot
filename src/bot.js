@@ -1,20 +1,23 @@
 import { Client, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
-import { AudioPlayerStatus, VoiceConnectionStatus, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
+import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, createAudioPlayer, createAudioResource, joinVoiceChannel, entersState, demuxProbe } from '@discordjs/voice';
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, expandPlaylist } from './source.js';
+import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, setVolume } from './controls.js';
-import { syncPanel, queueMetadata, queuePagination } from './panel.js';
+import { syncPanel, queueMetadata, syncQueue } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
-function updatePanel(s) { return syncPanel(s, client.ws.ping); }
+function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s)]); }
 function dispose(s) {
   if (s.closed) return;
   s.closed = true; s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.player.stop(); s.connection.destroy();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
+  s.leaveTask = sendVoiceLeave(client.guilds.cache.get(s.guildId)).catch(() => {});
+  return s.leaveTask;
 }
 function idle(s) { clearTimeout(s.idleTimer); s.idleTimer = setTimeout(() => { if (!s.current && !s.loading && !s.queue.length) dispose(s); }, 120000); }
 async function advance(s) {
@@ -55,7 +58,7 @@ async function createSession(interaction, channel) {
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
   s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
-  s.player.on(AudioPlayerStatus.Playing, () => { s.hasStarted = true; void updatePanel(s); });
+  s.player.on(AudioPlayerStatus.Playing, () => { if (!s.hasStarted) s.panelView = 'now'; s.hasStarted = true; void updatePanel(s); });
   s.player.on('error', error => { console.error('播放器錯誤：', error.message); s.player.stop(true); });
   connection.on('error', () => dispose(s));
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -91,28 +94,47 @@ async function handle(i, action = i.commandName) {
     void advance(s);
     return { session: s };
   }
+  if (!s && action === 'leave') {
+    const connectedChannel = i.guild.members.me?.voice.channelId;
+    if (connectedChannel && connectedChannel !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
+    getVoiceConnection(i.guildId)?.destroy();
+    await sendVoiceLeave(i.guild);
+    return;
+  }
   if (!s) throw new Error('目前沒有播放工作階段。');
+  if (action.startsWith('queue-page:')) {
+    const page = Number(action.slice('queue-page:'.length));
+    if (!Number.isInteger(page) || page < 0) throw new Error('頁碼無效。');
+    return { queueSession: s, page };
+  }
   switch (action) {
+    case 'now-playing': s.panelView = 'now'; return { session: s };
     case 'volume': setVolume(s, i.options.getInteger('percent', true)); return { session: s };
     case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
     case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
     case 'skip': if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。'); s.player.stop(true); return '⏭️ 已跳歌。';
     case 'leave': dispose(s); return '👋 已清空並離開。';
-    case 'page-prev': queuePagination(s, -1); return { session: s };
-    case 'page-next': queuePagination(s, 1); return { session: s };
-    case 'queue': s.queuePage = 0; return { session: s };
+    case 'queue': return { queueSession: s, page: 0 };
     default: throw new Error('未知指令。');
   }
 }
 client.on('interactionCreate', async i => {
   const button = i.isButton() && i.customId.startsWith('music:');
   if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
+  const queuePageButton = button && i.customId.startsWith('music:queue-page:');
   try {
     await i.deferReply({ flags: 64 });
     const previous = locks.get(i.guildId) ?? Promise.resolve();
     const task = previous.catch(() => {}).then(async () => {
-      if (button && sessions.get(i.guildId)?.panel?.id !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+      if (button) {
+        const session = sessions.get(i.guildId);
+        const expected = session?.panel?.id;
+        if (expected !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
+      }
       const result = await handle(i, button ? i.customId.slice(6) : i.commandName);
+      if (result?.queueSession) {
+        await syncQueue(result.queueSession, result.page);
+      }
       if (result?.session) {
         await updatePanel(result.session);
       }
@@ -124,6 +146,7 @@ client.on('interactionCreate', async i => {
 });
 client.once('clientReady', async c => {
   try {
+    await Promise.allSettled([...c.guilds.cache.values()].filter(g => g.members.me?.voice.channelId).map(sendVoiceLeave));
     await registerCommands(c.application);
     // Remove guild-scoped commands from the previous deployment, if configured.
     const legacyGuild = process.env.DISCORD_GUILD_ID;
@@ -137,5 +160,11 @@ client.once('clientReady', async c => {
     c.destroy(); process.exitCode = 1;
   }
 });
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { for (const s of sessions.values()) dispose(s); client.destroy(); process.exit(0); });
+let shuttingDown = false;
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await Promise.allSettled([...sessions.values()].map(dispose));
+  client.destroy(); process.exit(0);
+});
 await client.login(process.env.DISCORD_TOKEN);
