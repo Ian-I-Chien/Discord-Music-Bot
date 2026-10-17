@@ -15,6 +15,10 @@ if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
 const options = { allowedMentions: { parse: [] } };
+client.rest.on('rateLimited', limit => console.warn('Discord API 限流：', JSON.stringify({
+  routeFamily: limit.route?.split('/').filter(Boolean)[0], method: limit.method,
+  waitMs: limit.timeToReset ?? limit.retryAfter, global: limit.global,
+})));
 function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
@@ -174,11 +178,24 @@ async function handle(i, action = i.commandName) {
 }
 client.on('interactionCreate', async i => {
   const button = i.isButton() && i.customId.startsWith('music:');
-  if ((!i.isChatInputCommand() && !button) || !i.inCachedGuild()) return;
+  if (!i.isChatInputCommand() && !button) return;
+  const started = Date.now();
+  const trace = (phase, extra = {}) => {
+    const s = sessions.get(i.guildId);
+    console.log('操作追蹤：', JSON.stringify({ request: i.id, guild: i.guildId,
+      action: button ? i.customId : i.commandName, phase, elapsedMs: Date.now() - started,
+      clicked: button ? i.message.id : undefined, active: s?.panel?.id, view: s?.panelView,
+      player: s?.player.state.status, panelPending: Boolean(s?.panelWork), ...extra }));
+  };
+  trace('received');
+  if (!i.inCachedGuild()) { trace('guild-unavailable'); return; }
   try {
     await i.deferReply({ flags: 64 });
+    trace('acknowledged');
     const previous = locks.get(i.guildId) ?? Promise.resolve();
+    trace('queued', { busy: locks.has(i.guildId) });
     const task = previous.catch(() => {}).then(async () => {
+      trace('processing');
       if (button) {
         const session = sessions.get(i.guildId);
         if (!await isActivePanel(session, i.message.id) || sessions.get(i.guildId) !== session) {
@@ -186,10 +203,19 @@ client.on('interactionCreate', async i => {
             clicked: i.message.id, active: sessions.get(i.guildId)?.panel?.id, title: session?.current?.title }));
           throw new Error('這個面板已過期，請使用最新的播放面板。');
         }
+        trace('panel-validated');
       }
       const result = await handle(i, button && ['music:pause', 'music:resume'].includes(i.customId) ? 'toggle-pause' : button ? i.customId.slice(6) : i.commandName);
+      trace('action-applied');
       if (result?.queueSession) {
         await syncQueue(result.queueSession, result.page);
+        trace('queue-updated', { count: result.queueSession.queue.length });
+        // Read back the actual stored message; this distinguishes client display
+        // issues from an update that was overwritten or never sent.
+        const panel = result.queueSession.panel;
+        if (panel) void panel.fetch(true).then(stored => trace('queue-readback', {
+          message: stored.id, title: stored.embeds[0]?.title,
+        })).catch(error => trace('queue-readback-failed', { code: error.code ?? error.name }));
       }
       if (result?.freshPanelSession) {
         await repostPanel(result.freshPanelSession, client.ws.ping);
@@ -197,11 +223,14 @@ client.on('interactionCreate', async i => {
       if (result?.session) {
         await updatePanel(result.session);
       }
+      trace('panel-updated');
       await finishQuietReply(i);
+      trace('completed');
     });
     locks.set(i.guildId, task);
     try { await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
   } catch (error) {
+    trace('failed', { code: error.code ?? error.name });
     console.error('指令執行或回覆失敗：', button ? i.customId : i.commandName, error.code ?? error.name, error.message);
     if (i.deferred) await i.editReply({ content: error.message.slice(0,1900), ...options }).catch(replyError => console.warn('錯誤回覆失敗：', replyError.code ?? replyError.name, replyError.message));
   }
