@@ -32,21 +32,21 @@ test('loading publishes no prompts; playback publishes only one clean panel', as
 });
 
 test('queue pagination covers all tracks and clamps when queue shrinks', () => {
-  const s=session(); s.queue=Array.from({length:100},(_,n)=>({title:`Track ${n+1}`,author:'Artist',duration:245}));
+  const s=session(); s.queue=Array.from({length:300},(_,n)=>({title:`Track ${n+1}`,author:'Artist',duration:245}));
   let data=panelPayload(s);
   assert.match(data.embeds[1].toJSON().description,/Track 8/);
   assert.doesNotMatch(data.embeds[1].toJSON().description,/Track 9/);
   assert.equal(data.components[1].toJSON().components[0].disabled,true);
   queuePagination(s,1); data=panelPayload(s);
   assert.match(data.embeds[1].toJSON().description,/Track 9/);
-  assert.match(data.embeds[1].toJSON().footer.text,/第 2 \/ 13 頁/);
-  queuePagination(s,100); data=panelPayload(s);
-  assert.match(data.embeds[1].toJSON().description,/Track 100/);
+  assert.match(data.embeds[1].toJSON().footer.text,/第 2 \/ 38 頁/);
+  queuePagination(s,1000); data=panelPayload(s);
+  assert.match(data.embeds[1].toJSON().description,/Track 300/);
   assert.equal(data.components[1].toJSON().components[2].disabled,true);
   s.queue=s.queue.slice(0,2); panelPayload(s); assert.equal(s.queuePage,0);
   s.closed=true; assert.ok(panelPayload(s).components.flatMap(r=>r.toJSON().components).every(c=>c.disabled));
 });
 test('long queue titles and authors remain within Discord embed limits', () => {
-  const s=session(); s.queue=Array.from({length:100},()=>({title:'_*'.repeat(200),author:'_*'.repeat(200),page:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}));
+  const s=session(); s.queue=Array.from({length:300},()=>({title:'_*'.repeat(200),author:'_*'.repeat(200),page:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}));
   const data=panelPayload(s); assert.ok(data.embeds[1].toJSON().description.length<=4096);
 });

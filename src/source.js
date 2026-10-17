@@ -47,7 +47,7 @@ export function playlistUrl(input) {
   }
   return `https://www.youtube.com/playlist?list=${id}`;
 }
-export function expandPlaylist(input, limit = 100) {
+export function expandPlaylist(input, limit = 300) {
   const url = playlistUrl(input);
   if (!url) throw new Error('請提供 YouTube 歌單網址。');
   return new Promise((resolve, reject) => {

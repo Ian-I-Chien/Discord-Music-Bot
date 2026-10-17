@@ -13,7 +13,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 - Now Playing and Up Next embeds with artwork, track links, artist or uploader, elapsed time, duration, and a paginated queue showing eight tracks per page.
 - Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every 15 seconds.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
-- Up to 100 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
+- Up to 300 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
 - Sends WebM Opus audio without re-encoding in the bot, reducing CPU usage on Raspberry Pi.
 
 ## Development and environments
@@ -71,7 +71,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | `/queue` | Display the playback panel and upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Mix links import a finite snapshot of currently available recommendations; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 100 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Mix links import a finite snapshot of currently available recommendations; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 

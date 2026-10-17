@@ -76,15 +76,13 @@ async function handle(i, action = i.commandName) {
     const normalized = list || normalizeQuery(query);
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
-    if (s.queue.length >= 100) throw new Error('佇列上限為 100 首。');
+    if (s.queue.length >= 300) throw new Error('佇列已滿，請稍後再試。');
     if (list) {
-      const playlist = await expandPlaylist(list, 100 - s.queue.length);
+      const playlist = await expandPlaylist(list, 300 - s.queue.length);
       s.queue.push(...playlist.items);
-      s.notice = `已加入歌單「${playlist.title}」${playlist.items.length} 首${playlist.truncated ? '（達佇列上限，其餘未加入）' : ''}。`;
     } else {
       const item = { query: input };
       s.queue.push(item);
-      s.notice = '已加入歌曲。';
       void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
     }
     void advance(s);
