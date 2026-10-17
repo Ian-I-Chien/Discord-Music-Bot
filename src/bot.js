@@ -58,7 +58,7 @@ async function createSession(interaction, channel) {
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.panelTimer = setInterval(() => { if (s.current && s.player.state.status === AudioPlayerStatus.Playing) void updatePanel(s); }, 1000);
   s.player.on(AudioPlayerStatus.Idle, () => { s.current = null; s.hasStarted = false; s.resource = null; s.abort?.abort(); s.stream?.destroy(); void advance(s); });
-  s.player.on(AudioPlayerStatus.Playing, () => { s.hasStarted = true; void updatePanel(s); });
+  s.player.on(AudioPlayerStatus.Playing, () => { if (!s.hasStarted) s.panelView = 'now'; s.hasStarted = true; void updatePanel(s); });
   s.player.on('error', error => { console.error('播放器錯誤：', error.message); s.player.stop(true); });
   connection.on('error', () => dispose(s));
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -108,6 +108,7 @@ async function handle(i, action = i.commandName) {
     return { queueSession: s, page };
   }
   switch (action) {
+    case 'now-playing': s.panelView = 'now'; return { session: s };
     case 'volume': setVolume(s, i.options.getInteger('percent', true)); return { session: s };
     case 'pause': s.player.pause(); void updatePanel(s); return '⏸️ 已暫停。';
     case 'resume': s.player.unpause(); void updatePanel(s); return '▶️ 已繼續。';
@@ -127,7 +128,7 @@ client.on('interactionCreate', async i => {
     const task = previous.catch(() => {}).then(async () => {
       if (button) {
         const session = sessions.get(i.guildId);
-        const expected = queuePageButton ? session?.queueMessage?.id : session?.panel?.id;
+        const expected = session?.panel?.id;
         if (expected !== i.message.id) throw new Error('這個面板已過期，請使用最新的播放面板。');
       }
       const result = await handle(i, button ? i.customId.slice(6) : i.commandName);

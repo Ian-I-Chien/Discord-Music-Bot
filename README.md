@@ -10,7 +10,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 ## Features
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
-- A compact public Now Playing card with artwork, track link, artist or uploader, elapsed time, duration, and playback controls. Upcoming tracks are shown only on demand through `/queue` or the queue button, in a shared public paginated view with eight tracks per page. The queue stays hidden until requested, reuses one message, and refreshes when the track or queue changes.
+- A compact public Now Playing card with artwork, track link, artist or uploader, elapsed time, duration, and playback controls. Upcoming tracks are shown only on demand through `/queue` or the queue button, in a shared public paginated view with eight tracks per page. The queue stays hidden until requested and replaces the current-track view in the same shared message. A new track automatically restores Now Playing; `/now-playing` and the return button also restore it.
 - Pause/resume, skip, and stop buttons, plus previous/next queue pages with page numbers. Progress refreshes every second during playback and stops refreshing while paused. Pending edits are coalesced when Discord throttles updates.
 - Separate queues and voice connections for each Discord server; one active voice channel per server.
 - Up to 300 queued tracks and automatic disconnect after two idle minutes. Controls require membership in the bot's voice channel.
@@ -70,6 +70,7 @@ Only `DISCORD_TOKEN` is required. Optionally set `YTDLP_PATH` to an explicit yt-
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/skip` | Skip the current track |
+| `/now-playing` | Switch the shared message back to the current track |
 | `/queue` | Open the shared, paginated view of upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 

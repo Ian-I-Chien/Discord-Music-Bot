@@ -30,7 +30,7 @@ test('loading publishes no prompts; playback publishes only one clean panel', as
   await syncPanel(s); assert.equal(sends,0);
   s.hasStarted=true; s.loading=false;
   await syncPanel(s); assert.equal(sends,1);
-  await syncPanel(s); assert.equal(sends,1); assert.equal(edits,1);
+  await syncPanel(s); assert.equal(sends,1); assert.equal(edits,0);
 });
 
 test('private queue pages cover all tracks without affecting the public player', () => {
@@ -62,19 +62,22 @@ test('rapid panel refreshes coalesce while a Discord edit is pending', async () 
   const s=session(); let edits=0, release;
   s.panel={ async edit() { edits++; if(edits===1) await new Promise(resolve=>{release=resolve;}); } };
   const first=syncPanel(s); await Promise.resolve();
-  for(let n=0;n<50;n++) syncPanel(s);
+  for(let n=0;n<50;n++) { s.resource.playbackDuration+=1000; syncPanel(s); }
   assert.equal(edits,1); release(); await first;
   assert.equal(edits,2); assert.equal(s.panelWork,null);
 });
 
-test('public queue opens only on request and refreshes existing message on track changes', async () => {
+test('queue and now-playing replace the same message without duplicate cards', async () => {
   const s=session(); let sends=0,edits=0,last;
   s.text={async send(payload){sends++;last=payload;return {async edit(payload){edits++;last=payload;return this;}};}};
   await syncQueue(s); assert.equal(sends,0);
-  await syncQueue(s,0); assert.equal(sends,1); assert.equal(last.embeds.length,1);
-  await syncQueue(s); assert.equal(edits,0);
-  s.queue.shift(); await syncQueue(s); assert.equal(edits,1); assert.equal(sends,1);
-  assert.doesNotMatch(last.embeds[0].toJSON().description,/Song 0/);
-  s.closed=true;s.queue=[];await syncQueue(s);assert.equal(edits,2);
-  assert.ok(last.components[0].toJSON().components.every(c=>c.disabled));
+  await syncPanel(s); assert.equal(sends,1);
+  await syncQueue(s,0); assert.equal(sends,1);assert.equal(edits,1);
+  assert.match(last.embeds[0].toJSON().title,/待播清單/);
+  assert.ok(last.components[0].toJSON().components.some(c=>c.custom_id==='music:now-playing'));
+  await syncPanel(s);assert.equal(edits,1);
+  s.queue.shift();await syncPanel(s);assert.equal(edits,2);
+  s.panelView='now';await syncPanel(s);assert.equal(edits,3);assert.equal(sends,1);
+  assert.match(last.embeds[0].toJSON().title,/正在播放/);
+  s.closed=true;await syncPanel(s);assert.ok(last.components[0].toJSON().components.every(c=>c.disabled));
 });

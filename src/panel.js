@@ -54,6 +54,7 @@ export function queuePayload(session, requestedPage = 0) {
     new ButtonBuilder().setCustomId(`music:queue-page:${Math.max(0, page - 1)}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
     new ButtonBuilder().setCustomId(`music:queue-page:${Math.min(pages - 1, page + 1)}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
+    new ButtonBuilder().setCustomId('music:now-playing').setLabel('回到播放').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
   );
   return { content: '', embeds: [queue], components: [pagination], allowedMentions: { parse: [] } };
 }
@@ -75,11 +76,17 @@ export function syncPanel(s, ping = 0) {
     while (s.panelDirty) {
       s.panelDirty = false;
       if (!s.closed && !s.hasStarted) continue;
-      const payload = panelPayload(s, ping);
-      if (s.panel) await s.panel.edit(payload).catch(() => {});
+      const payload = !s.closed && s.panelView === 'queue' ? queuePayload(s, s.queuePage || 0) : panelPayload(s, ping);
+      const signature = JSON.stringify(payload);
+      if (signature === s.panelSignature) continue;
+      if (s.panel) {
+        const edited = await s.panel.edit(payload).then(() => true).catch(() => false);
+        if (edited) s.panelSignature = signature;
+      }
       else if (!s.closed) {
         const message = await s.text.send(payload).catch(() => null);
         s.panel = message;
+        if (message) s.panelSignature = signature;
         if (message && s.closed) await message.edit(panelPayload(s, ping)).catch(() => {});
       }
     }
@@ -88,27 +95,8 @@ export function syncPanel(s, ping = 0) {
 }
 
 export function syncQueue(s, requestedPage) {
-  if (requestedPage !== undefined) {
-    s.queueVisible = true;
-    s.queuePage = queuePagination({ ...s, queuePage: requestedPage }).page;
-  }
-  if (!s.queueVisible) return Promise.resolve();
-  s.queueDirty = true;
-  if (s.queueWork) return s.queueWork;
-  s.queueWork = Promise.resolve().then(async () => {
-    while (s.queueDirty) {
-      s.queueDirty = false;
-      const payload = queuePayload(s, s.queuePage || 0);
-      const signature = JSON.stringify(payload);
-      if (signature === s.queueSignature) continue;
-      if (s.queueMessage) {
-        const edited = await s.queueMessage.edit(payload).catch(() => null);
-        if (edited) s.queueSignature = signature;
-      } else if (!s.closed) {
-        s.queueMessage = await s.text.send(payload).catch(() => null);
-        if (s.queueMessage) s.queueSignature = signature;
-      }
-    }
-  }).finally(() => { s.queueWork = null; });
-  return s.queueWork;
+  if (requestedPage === undefined) return Promise.resolve();
+  s.panelView = 'queue';
+  s.queuePage = queuePagination({ ...s, queuePage: requestedPage }).page;
+  return syncPanel(s);
 }
