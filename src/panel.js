@@ -77,11 +77,11 @@ export function syncPanel(s, ping = 0) {
     // Keep at most one in-flight edit and coalesce updates during API rate limits.
     while (s.panelDirty) {
       s.panelDirty = false;
-      if (!s.closed && !s.hasStarted && !s.showIdlePanel && s.panelView !== 'queue') continue;
+      if (!s.closed && !s.hasStarted && !s.showIdlePanel && s.panelView !== 'queue' && !s.panelRepost) continue;
       const payload = !s.closed && s.panelView === 'queue' ? queuePayload(s, s.queuePage || 0) : panelPayload(s, ping);
       const signature = JSON.stringify(payload);
-      if (signature === s.panelSignature) continue;
-      if (s.panel) {
+      if (signature === s.panelSignature && !s.panelRepost) continue;
+      if (s.panel && !s.panelRepost) {
         const edited = await s.panel.edit(payload).then(() => true).catch(error => {
           console.error('面板更新失敗：', error.code ?? error.name, error.message);
           s.panelError = new Error('無法更新播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
@@ -90,18 +90,37 @@ export function syncPanel(s, ping = 0) {
         if (edited) { s.panelSignature = signature; s.panelError = null; }
       }
       else if (!s.closed) {
+        const previous = s.panel;
         const message = await s.text.send(payload).catch(error => {
           console.error('面板傳送失敗：', error.code ?? error.name, error.message);
           s.panelError = new Error('無法顯示播放面板，請確認機器人的傳送訊息與嵌入連結權限。');
           return null;
         });
-        s.panel = message;
-        if (message) { s.panelSignature = signature; s.panelError = null; }
+        if (message) {
+          s.panel = message;
+          s.panelRepost = false;
+          s.panelSignature = signature;
+          s.panelError = null;
+          // Retire the old controls only after the replacement has been sent.
+          if (previous) await previous.edit({ components: [] }).catch(error => {
+            console.warn('舊面板控制項清除失敗：', error.code ?? error.name, error.message);
+          });
+        } else s.panelRepost = false;
         if (message && s.closed) await message.edit(panelPayload(s, ping)).catch(() => {});
       }
     }
   }).finally(() => { s.panelWork = null; });
   return s.panelWork;
+}
+
+export async function repostPanel(s, ping = 0) {
+  // Finish the existing edit before replacing the active message reference.
+  if (s.panelWork) await s.panelWork;
+  if (s.closed) throw new Error('播放已結束，請使用 /play 再次點歌。');
+  s.panelView = 'now';
+  s.panelRepost = true;
+  await syncPanel(s, ping);
+  if (s.panelError) throw s.panelError;
 }
 
 export function syncQueue(s, requestedPage) {

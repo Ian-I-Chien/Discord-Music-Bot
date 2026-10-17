@@ -7,7 +7,7 @@ import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
 import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
-import { syncPanel, queueMetadata, syncQueue } from './panel.js';
+import { syncPanel, queueMetadata, syncQueue, repostPanel } from './panel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const sessions = new Map();
@@ -121,7 +121,7 @@ async function handle(i, action = i.commandName) {
     return { queueSession: s, page };
   }
   switch (action) {
-    case 'now-playing': s.panelView = 'now'; return { session: s };
+    case 'now-playing': return { freshPanelSession: s };
     case 'toggle-pause': togglePause(s); return { session: s };
     case 'pause': togglePause(s, 'pause'); return { session: s };
     case 'resume': togglePause(s, 'resume'); return { session: s };
@@ -147,6 +147,9 @@ client.on('interactionCreate', async i => {
       const result = await handle(i, button && ['music:pause', 'music:resume'].includes(i.customId) ? 'toggle-pause' : button ? i.customId.slice(6) : i.commandName);
       if (result?.queueSession) {
         await syncQueue(result.queueSession, result.page);
+      }
+      if (result?.freshPanelSession) {
+        await repostPanel(result.freshPanelSession, client.ws.ping);
       }
       if (result?.session) {
         await updatePanel(result.session);

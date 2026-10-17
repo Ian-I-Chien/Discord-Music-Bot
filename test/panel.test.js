@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue } from '../src/panel.js';
+import { panelPayload, time, syncPanel, queuePagination, queuePayload, syncQueue, repostPanel } from '../src/panel.js';
 function session() { return { hasStarted: true, player: { state: { status: 'playing' } }, resource: { playbackDuration: 65000 }, current: { title: 'Test song', author: 'Artist', duration: 245, page: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }, queue: Array.from({length:5}, (_, n) => ({title:`Song ${n}`})) }; }
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
@@ -93,6 +93,48 @@ test('volume is visible by default in player, idle and queue views', async () =>
   s.text={async send(p){posted=p;return {async edit(){}};}};
   await syncPanel(s);assert.equal(posted.embeds[0].toJSON().title,'音樂播放器');
   assert.match(posted.embeds[0].toJSON().fields[0].value,/30%/);
+});
+
+test('now-playing posts a fresh panel, retires old controls and preserves playback', async () => {
+  const s = session();
+  const resource = s.resource, current = s.current, queue = s.queue;
+  const calls = [];
+  const old = { async edit(payload) { calls.push(['retire', payload]); } };
+  const fresh = { async edit(payload) { calls.push(['update', payload]); } };
+  s.panel = old; s.panelView = 'queue';
+  s.text = { async send(payload) { calls.push(['send', payload]); return fresh; } };
+  await repostPanel(s);
+  assert.equal(s.panel, fresh);
+  assert.equal(s.panelView, 'now');
+  assert.deepEqual(calls.map(c => c[0]), ['send', 'retire']);
+  assert.deepEqual(calls[1][1], { components: [] });
+  assert.match(calls[0][1].embeds[0].toJSON().description, /01:05/);
+  assert.equal(s.resource, resource); assert.equal(s.current, current); assert.equal(s.queue, queue);
+  s.resource.playbackDuration += 1000;
+  await syncPanel(s);
+  assert.equal(calls.at(-1)[0], 'update');
+  await repostPanel(s);
+  assert.equal(calls.filter(c => c[0] === 'send').length, 2);
+});
+
+test('failed replacement retains the existing panel and controls', async () => {
+  const s = session(); let retired = false;
+  const old = { async edit() { retired = true; } }; s.panel = old;
+  s.text = { async send() { throw new Error('Network error'); } };
+  await assert.rejects(repostPanel(s), /無法顯示播放面板/);
+  assert.equal(s.panel, old); assert.equal(retired, false); assert.equal(s.panelRepost, false);
+});
+
+test('replacement waits for pending edits and can show the current loading state', async () => {
+  const s = session(); let release; const calls = [];
+  s.panel = { async edit(payload) { calls.push(payload.components.length ? 'edit' : 'retire'); if (calls.length === 1) await new Promise(r => release = r); } };
+  s.text = { async send() { calls.push('send'); return { async edit() {} }; } };
+  const pending = syncPanel(s); await Promise.resolve();
+  const replacement = repostPanel(s); assert.deepEqual(calls, ['edit']);
+  release(); await pending; await replacement;
+  assert.deepEqual(calls, ['edit', 'send', 'retire']);
+  s.hasStarted = false; s.current = null; s.loading = true;
+  await repostPanel(s); assert.equal(calls.filter(c => c === 'send').length, 2);
 });
 
 
