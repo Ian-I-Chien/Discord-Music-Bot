@@ -1,4 +1,4 @@
-import { searchCandidates, resolveTrack } from './source.js';
+import { resolveTrack } from './source.js';
 
 export function spotifyUrl(input) {
   let url;
@@ -91,32 +91,10 @@ export async function readSpotifyInput(input, options = {}) {
   return { kind, id, page };
 }
 
-const normalized = text => String(text || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-const compact = text => normalized(text).replaceAll(' ', '');
-const variants = [/\bcover\b|翻唱/i, /\blive\b|現場|演唱會/i, /\bremix\b/i, /\bsped\s*up\b|\bnightcore\b|加速/i, /\bslowed\b|慢速/i, /\bkaraoke\b|伴奏/i];
-export function matchSpotifyTrack(track, candidates) {
-  const requested = `${track.title} ${track.artists.join(' ')}`;
-  const title = normalized(track.title); const words = title.split(' ').filter(Boolean);
-  const ranked = candidates.flatMap(candidate => {
-    if (!/^[\w-]{11}$/.test(candidate.id) || candidate.is_live) return [];
-    const text = `${candidate.title || ''} ${candidate.uploader || candidate.channel || ''}`;
-    if (variants.some(pattern => pattern.test(text) && !pattern.test(requested))) return [];
-    const candidateTitle = normalized(candidate.title);
-    const titleMatch = compact(candidate.title).includes(compact(track.title));
-    const coverage = words.filter(word => candidateTitle.includes(word)).length / words.length;
-    const artistMatch = track.artists.some(artist => compact(text).includes(compact(artist)));
-    const distance = Math.abs(Number(candidate.duration) - track.duration);
-    // Reject uncertain matches instead of silently taking the first search hit.
-    if ((!titleMatch && coverage < 0.8) || !artistMatch || !Number.isFinite(distance) || distance > Math.min(15, Math.max(8, track.duration * 0.04))) return [];
-    return [{ candidate, score: (titleMatch ? 50 : coverage * 40) + 30 - distance + (/official audio|官方音源|\btopic\b/i.test(text) ? 8 : /official|官方/i.test(text) ? 4 : 0) }];
-  }).sort((a, b) => b.score - a.score);
-  if (!ranked.length) throw new Error('找不到可靠的 YouTube 對應版本，請改貼 YouTube 連結。');
-  return ranked[0].candidate;
-}
-
-export async function resolveSpotifyTrack(metadata, { signal, search = searchCandidates, resolve = resolveTrack } = {}) {
-  const candidates = await search(`${metadata.artists.join(' ')} ${metadata.title} official audio`, { signal });
-  const match = matchSpotifyTrack(metadata, candidates);
-  const track = await resolve(`https://www.youtube.com/watch?v=${match.id}`, { signal });
+export async function resolveSpotifyTrack(metadata, { signal, resolve = resolveTrack } = {}) {
+  const query = `${metadata.artists.join(' ')} ${metadata.title} official audio`;
+  // resolveTrack already uses ytsearch1: one search and source lookup, with no
+  // separate candidate process, artist-name gate, duration gate or reranking.
+  const track = await resolve(query, { signal });
   return { ...track, spotify: metadata };
 }

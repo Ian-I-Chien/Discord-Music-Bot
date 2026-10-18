@@ -1,27 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
-export function searchCandidates(query, { signal } = {}) {
-  signal?.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.env.YTDLP_PATH || 'yt-dlp', ['--ignore-config', '--flat-playlist', '--no-warnings', '--js-runtimes', 'node', '--socket-timeout', '15', '--dump-single-json', '--', `ytsearch5:${query}`], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = ''; let settled = false;
-    const finish = (error, result) => { if (settled) return; settled = true; clearTimeout(timer); signal?.removeEventListener('abort', cancel); error ? reject(error) : resolve(result); };
-    const cancel = () => { child.kill('SIGKILL'); finish(signal.reason || new Error('搜尋已取消。')); };
-    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new Error('YouTube 配歌搜尋逾時。')); }, 30000);
-    signal?.addEventListener('abort', cancel, { once: true });
-    if (signal?.aborted) cancel();
-    child.stdout.on('data', chunk => { out += chunk; if (out.length > 2_000_000) { child.kill('SIGKILL'); finish(new Error('配歌搜尋回應過大。')); } });
-    child.stderr.resume();
-    child.once('error', () => finish(new Error('無法執行 yt-dlp。')));
-    child.once('close', code => {
-      if (settled) return;
-      if (code !== 0) return finish(new Error('YouTube 配歌搜尋失敗。'));
-      try { finish(null, JSON.parse(out).entries || []); } catch { finish(new Error('無法解析配歌搜尋結果。')); }
-    });
-  });
-}
-
 // --lazy-playlist avoids collecting the entire list before emitting entries.
 export async function* streamPlaylist(input, limit = 300, { signal, spawnProcess = spawn } = {}) {
   const url = playlistUrl(input);
