@@ -3,7 +3,8 @@ import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamTyp
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, streamPlaylist } from './source.js';
 import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
-import { spotifyUrl, readSpotifyTrack, resolveSpotifyTrack } from './spotify.js';
+import { readSpotifyInput, resolveSpotifyTrack } from './spotify.js';
+import { streamSpotifyCollection } from './spotify-collection.js';
 import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
@@ -119,13 +120,21 @@ async function handle(i, action = i.commandName) {
     if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
     if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
     const query = (i.options.getString('link') ?? i.options.getString('query', true));
-    const spotify = spotifyUrl(query) ? await readSpotifyTrack(query) : null;
+    const spotifyInput = await readSpotifyInput(query);
+    const spotify = spotifyInput?.metadata;
+    const collection = spotifyInput && spotifyInput.kind !== 'track' ? spotifyInput : null;
     const list = action === 'playnext' ? null : playlistUrl(query);
-    const normalized = spotify?.page || list || normalizeQuery(query);
+    const normalized = spotifyInput?.page || list || normalizeQuery(query);
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
     if (s.queue.length >= MAX_QUEUE) throw new Error('佇列已滿，請稍後再試。');
-    if (list) {
+    if (collection) {
+      const limit = MAX_QUEUE - s.queue.length;
+      await importPlaylist(s, signal => streamSpotifyCollection(collection.page, limit, { signal }), {
+        advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
+        next: action === 'playnext',
+      }).ready;
+    } else if (list) {
       const limit = playlistImportLimit(list, s.queue.length);
       await importPlaylist(s, signal => streamPlaylist(list, limit, { signal }), {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },

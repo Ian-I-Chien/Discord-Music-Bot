@@ -4,6 +4,8 @@
 !.env.example
 *.pem
 *.key
+.spotify-auth.json
+.spotify-auth.json.*
 
 # Dependencies and runtimes
 node_modules/

@@ -11,8 +11,8 @@ export function spotifyUrl(input) {
   }
   const match = url.pathname.match(/^\/(?:intl-[\w-]+\/)?(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]{22})\/?$/);
   if (!match) throw new Error('Spotify 連結無效。');
-  if (match[1] !== 'track') throw new Error('目前先支援 Spotify 單曲；歌單與專輯尚未支援。');
-  return `https://open.spotify.com/track/${match[2]}`;
+  if (!['track', 'playlist', 'album'].includes(match[1])) throw new Error('請提供 Spotify 歌曲、歌單或專輯連結。');
+  return `https://open.spotify.com/${match[1]}/${match[2]}`;
 }
 
 function decode(value) {
@@ -40,7 +40,7 @@ export function parseSpotifyMetadata(html, page) {
   return { title, artists, duration, page };
 }
 
-export async function readSpotifyTrack(input, { fetchImpl = fetch, signal } = {}) {
+async function readSpotifyPage(input, { fetchImpl = fetch, signal } = {}) {
   let page = spotifyUrl(input);
   if (!page) throw new Error('請提供 Spotify 單曲連結。');
   const timeout = AbortSignal.timeout(12000);
@@ -54,7 +54,7 @@ export async function readSpotifyTrack(input, { fetchImpl = fetch, signal } = {}
       if (!next) throw new Error('Spotify 分享連結導向不支援的網址。');
       page = next; continue;
     }
-    if (!response.ok || !page.startsWith('https://open.spotify.com/track/')) {
+    if (!response.ok || !/^https:\/\/open\.spotify\.com\/(track|playlist|album)\//.test(page)) {
       await response.body?.cancel();
       throw new Error('無法讀取 Spotify 歌曲，請確認連結公開且有效。');
     }
@@ -68,9 +68,26 @@ export async function readSpotifyTrack(input, { fetchImpl = fetch, signal } = {}
         chunks.push(Buffer.from(value));
       }
     } finally { await reader.cancel().catch(() => {}); }
-    return parseSpotifyMetadata(Buffer.concat(chunks).toString('utf8'), page);
+    return { html: Buffer.concat(chunks).toString('utf8'), page };
   }
   throw new Error('Spotify 分享連結重新導向過多。');
+}
+
+export async function readSpotifyTrack(input, options = {}) {
+  const { html, page } = await readSpotifyPage(input, options);
+  if (!page.includes('/track/')) throw new Error('請提供 Spotify 單曲連結。');
+  return parseSpotifyMetadata(html, page);
+}
+
+export async function readSpotifyInput(input, options = {}) {
+  let page = spotifyUrl(input); let document;
+  if (!page) return null;
+  if (page.startsWith('https://spotify.link/')) {
+    document = await readSpotifyPage(page, options); page = document.page;
+  }
+  const [, kind, id] = new URL(page).pathname.split('/');
+  if (kind === 'track') return { kind, page, metadata: document ? parseSpotifyMetadata(document.html, page) : await readSpotifyTrack(page, options) };
+  return { kind, id, page };
 }
 
 const normalized = text => String(text || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();

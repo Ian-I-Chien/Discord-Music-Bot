@@ -10,7 +10,8 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 ## Features
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
-- Spotify **track** links (including `spotify.link` shares) work with `/play` and `/playnext`. The bot reads public song metadata and searches YouTube for a matching title, artist, and duration. It rejects obvious version mismatches and uncertain results. Audio comes from YouTube, not Spotify; the panel links back to the original Spotify track. No Spotify token or Premium account is required for this implementation. Public-page metadata can change or be unavailable by region; use a YouTube URL if lookup fails. Spotify playlists, albums, podcasts, and direct Spotify audio are not supported.
+- Spotify links (including `spotify.link` shares) work with `/play` and `/playnext`. Single tracks use public metadata without Spotify authorization. Playlists and albums use the Spotify Web API after one-time account authorization, preserving source order and duplicates while skipping local files and non-track items. The first page can start playback while later pages load in the background, up to the available queue capacity (300 waiting tracks). `/playnext` inserts a Spotify collection ahead of existing waiting tracks without interrupting playback.
+- Spotify requests search YouTube for a matching title, artist, and duration, rejecting obvious version mismatches and uncertain results. Audio comes from YouTube, not Spotify; the panel links back to the original Spotify track. Public-page metadata can change or be unavailable by region; use a YouTube URL if single-track lookup fails. Podcasts and direct Spotify audio are not supported.
 - Playlist and Mix entries load progressively: playback can start as soon as the first playable entry arrives, while the remaining entries join the queue in their original order. Later `/play` requests stay behind that import; `/playnext` retains priority. Leaving cancels background imports. Mixes remain limited to 20 entries and the waiting queue to 300 tracks. If a background import fails, already loaded tracks remain available; diagnostics stay in service logs.
 - When starting playback, the command's private thinking indicator remains until audio actually starts. Adding tracks to an existing session completes immediately after enqueueing. Failures, cancellation, and a two-minute startup timeout settle the private response instead of leaving it pending.
 - A compact public Now Playing card with artwork, track link, artist or uploader, elapsed time, duration, and playback controls. Upcoming tracks are shown only on demand through `/queue` or the queue button, in a shared public paginated view with eight tracks per page. The queue stays hidden until requested and replaces the current-track view in the same shared message. A new track automatically restores Now Playing; `/now-playing` and the return button also restore it.
@@ -70,7 +71,7 @@ The bot updates its voice channel status with only the current song title, witho
 | Command | Action |
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
-| `/playnext link:<URL or song name>` | Insert a YouTube track or Spotify track match at the front of the waiting queue without interrupting the current song |
+| `/playnext link:<URL or song name>` | Insert a YouTube track or Spotify track/collection ahead of the waiting queue without interrupting the current song |
 | `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
@@ -80,7 +81,7 @@ The bot updates its voice channel status with only the current song title, witho
 | `/queue` | Open the shared, paginated view of upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, live streams, Spotify playlists and albums, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 
@@ -153,3 +154,21 @@ When no human listeners remain in the bot voice channel, a separate three-minute
 When a new track starts, the bot posts a new active playback panel and then deletes the previous active panel. Pause/resume and reconnecting the same track keep the existing message. If sending fails the original remains; if deletion fails its controls are removed.
 
 Automatic progress refreshes skip ticks while a panel request is pending. This lets the request finish under Discord rate limits so queue, pause/resume and other user controls can proceed.
+
+## Spotify playlist and album authorization
+
+Single-track links still require only `DISCORD_TOKEN`. Collection imports additionally need a one-time Spotify account connection. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), enable Web API, and register the exact redirect URI `http://127.0.0.1:8888/callback`.
+
+On your local computer, run the command below from the project directory, replacing `YOUR_CLIENT_ID` with the app Client ID (not a Client Secret):
+
+```sh
+node scripts/authorize-spotify.js YOUR_CLIENT_ID
+```
+
+Open the printed authorization URL in a browser on the same computer, then sign in with the playlist owner's account. The helper uses Authorization Code with PKCE, validates OAuth state, and requests only playlist read permissions. It writes `.spotify-auth.json` with owner-only permissions; tokens are never printed. The callback listens only on the local loopback interface and expires after five minutes.
+
+Copy `.spotify-auth.json` securely into the desired bot environment's working directory and restart that service. The bot refreshes expired access tokens and persists rotated refresh tokens automatically. `SPOTIFY_AUTH_FILE` may optionally select another secure path. Do not commit or share authorization files, put them in release archives, or paste tokens into chat. The default authorization file and its temporary files are excluded by `.gitignore`; deployments must preserve that file just like `.env`.
+
+Spotify's current playlist endpoint only permits lists owned by, or collaboratively editable by, the authorized account. A public link alone does not guarantee full access. Other users' lists may return 403 unless the owner adds this account as a collaborator. Do not treat the public embed's first 100 entries as a complete playlist. Current Development Mode requirements and user limits also apply; see the [Spotify migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide) and [playlist endpoint documentation](https://developer.spotify.com/documentation/web-api/reference/get-playlists-items).
+
+Imports fetch at most 50 items per API page. They retain original ordering and repeated songs, respect the available queue capacity, and stop background work when the session closes. Rate limits and partial background failures are logged only in service logs; already queued tracks remain playable. Successful command responses stay pending until playback begins and are then dismissed without public loading notices.
