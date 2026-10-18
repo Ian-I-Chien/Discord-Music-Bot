@@ -1,57 +1,60 @@
-import { spotifyUrl } from './spotify.js';
-import { createSpotifyTokenProvider } from './spotify-auth.js';
+import { spotifyUrl, readSpotifyPage } from './spotify.js';
 
-export function spotifyQueueItem(track) {
-  if (!track || track.is_local || (track.type && track.type !== 'track') || !/^[a-zA-Z0-9]{22}$/.test(track.id || '') || !track.name || !(track.duration_ms > 0)) return null;
-  const artists = track.artists?.map(artist => artist.name).filter(Boolean);
-  if (!artists?.length) return null;
-  const page = `https://open.spotify.com/track/${track.id}`;
-  const metadata = { page, title: track.name, artists, duration: track.duration_ms / 1000 };
-  return { query: page, page, title: track.name, author: artists.join(', '), duration: metadata.duration, spotify: metadata };
+export function parseSpotifyCollection(html, input) {
+  const page = spotifyUrl(input);
+  const match = page?.match(/^https:\/\/open\.spotify\.com\/(playlist|album)\/([a-zA-Z0-9]{22})$/);
+  if (!match) throw new Error('請提供 Spotify 歌單或專輯連結。');
+  const raw = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  let entity;
+  try { entity = JSON.parse(raw).props.pageProps.state.data.entity; } catch { throw new Error('暫時無法讀取這份清單，請稍後再試。'); }
+  if (!entity || entity.type !== match[1] || entity.id !== match[2] || !Array.isArray(entity.trackList)) throw new Error('Spotify 清單資料無效。');
+  const items = entity.trackList.flatMap(track => {
+    if (!track || typeof track.uri !== 'string') return [];
+    const id = track.uri.match(/^spotify:track:([a-zA-Z0-9]{22})$/)?.[1];
+    const title = typeof track.title === 'string' ? track.title.trim() : '';
+    const artists = typeof track.subtitle === 'string' ? track.subtitle.split(', ').map(name => name.trim()).filter(Boolean) : [];
+    const duration = Number(track.duration) / 1000;
+    if (!id || !title || title.length > 300 || !artists.length || artists.join(' ').length > 300 || !Number.isFinite(duration) || duration <= 0) return [];
+    const trackPage = `https://open.spotify.com/track/${id}`;
+    const metadata = { page: trackPage, title, artists, duration };
+    return [{ query: trackPage, page: trackPage, title, author: artists.join(', '), duration, spotify: metadata, spotifyCollectionPage: page }];
+  });
+  if (!items.length) throw new Error('這份清單目前沒有可讀取的歌曲。');
+  return { title: entity.title || entity.name || 'Spotify', page, items, visible: entity.trackList.length };
 }
 
-export function createSpotifyCollectionReader({ fetchImpl = fetch, token = createSpotifyTokenProvider() } = {}) {
-  async function get(url, signal) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const access = await token({ force: attempt === 1, signal });
-      signal?.throwIfAborted();
-      const timeout = AbortSignal.timeout(15000);
-      const response = await fetchImpl(url, { redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout, headers: { Authorization: `Bearer ${access}` } });
-      if (response.status === 401 && attempt === 0) { await response.body?.cancel(); continue; }
-      if (!response.ok) {
-        await response.body?.cancel();
-        if (response.status === 403) throw new Error('Spotify 無法讀取這份歌單，請確認連結帳號是歌單擁有者或共同編輯者。');
-        if (response.status === 429) throw new Error('Spotify 暫時繁忙，請稍後再試。');
-        throw new Error('Spotify 暫時無法讀取這份清單，請稍後再試。');
-      }
-      return response.json();
-    }
-  }
-  return async function* streamSpotifyCollection(input, limit = 300, { signal } = {}) {
+export function publicCollectionTotal(html, input) {
+  const page = spotifyUrl(input);
+  const [, kind, id] = new URL(page).pathname.split('/');
+  const raw = html.match(/<script\b[^>]*\bid=["']initialState["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  try {
+    const state = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+    const entity = state.entities.items[`spotify:${kind}:${id}`];
+    const total = kind === 'playlist' ? entity.content.totalCount : entity.tracksV2.totalCount;
+    return Number.isInteger(total) && total >= 0 ? total : undefined;
+  } catch { return undefined; }
+}
+
+export function createSpotifyCollectionReader({ fetchImpl = fetch } = {}) {
+  return async function* streamSpotifyCollection(input, limit = 300, { signal, onInfo = () => {} } = {}) {
     const page = spotifyUrl(input);
-    const match = page?.match(/^https:\/\/open\.spotify\.com\/(playlist|album)\/([a-zA-Z0-9]{22})$/);
-    if (!match || !Number.isInteger(limit) || limit < 1 || limit > 300) throw new Error('Spotify 清單或載入數量無效。');
-    const [kind, id] = match.slice(1);
-    const path = `/v1/${kind === 'playlist' ? 'playlists' : 'albums'}/${id}/${kind === 'playlist' ? 'items' : 'tracks'}`;
-    let next = `https://api.spotify.com${path}?limit=50&offset=0`; let count = 0;
-    const visited = new Set();
-    // Pagination URLs are untrusted: never send a bearer token off this endpoint.
-    while (next && count < limit) {
+    if (!/^https:\/\/open\.spotify\.com\/(playlist|album)\/[a-zA-Z0-9]{22}$/.test(page || '') || !Number.isInteger(limit) || limit < 1 || limit > 300) throw new Error('Spotify 清單或載入數量無效。');
+    const document = await readSpotifyPage(page, { fetchImpl, signal, embed: true });
+    const collection = parseSpotifyCollection(document.html, page);
+    onInfo({ title: collection.title, page, visible: collection.visible });
+    let count = 0;
+    for (const item of collection.items) {
       signal?.throwIfAborted();
-      const url = new URL(next);
-      if (url.origin !== 'https://api.spotify.com' || url.username || url.password || url.pathname !== path || visited.has(url.href)) throw new Error('Spotify 清單分頁資料無效。');
-      visited.add(url.href);
-      if (visited.size > 200) throw new Error('Spotify 清單分頁過多。');
-      const data = await get(url.href, signal);
-      if (!Array.isArray(data.items)) throw new Error('Spotify 清單資料無效。');
-      for (const row of data.items) {
-        signal?.throwIfAborted();
-        const item = spotifyQueueItem(kind === 'playlist' ? (row?.item ?? row?.track) : row);
-        if (!item) continue;
-        yield item;
-        if (++count >= limit) return;
-      }
-      next = data.next;
+      yield item;
+      if (++count >= limit) break;
+    }
+    // Check total size after yielding entries; this does not unlock hidden tracks.
+    if (!signal?.aborted) {
+      try {
+        const source = await readSpotifyPage(page, { fetchImpl, signal });
+        const total = publicCollectionTotal(source.html, page);
+        if (total !== undefined) onInfo({ title: collection.title, page, visible: collection.visible, total });
+      } catch (error) { if (signal?.aborted) throw error; }
     }
   };
 }

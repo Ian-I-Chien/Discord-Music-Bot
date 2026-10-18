@@ -40,13 +40,14 @@ export function parseSpotifyMetadata(html, page) {
   return { title, artists, duration, page };
 }
 
-async function readSpotifyPage(input, { fetchImpl = fetch, signal } = {}) {
+export async function readSpotifyPage(input, { fetchImpl = fetch, signal, embed = false } = {}) {
   let page = spotifyUrl(input);
   if (!page) throw new Error('請提供 Spotify 單曲連結。');
   const timeout = AbortSignal.timeout(12000);
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   for (let hop = 0; hop < 5; hop++) {
-    const response = await fetchImpl(page, { redirect: 'manual', signal: requestSignal, headers: { 'Accept-Language': 'en-US,en;q=0.9' } });
+    const target = embed && page.startsWith('https://open.spotify.com/') ? page.replace('https://open.spotify.com/', 'https://open.spotify.com/embed/') : page;
+    const response = await fetchImpl(target, { redirect: 'manual', signal: requestSignal, headers: { 'Accept-Language': 'en-US,en;q=0.9' } });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get('location');
       await response.body?.cancel();

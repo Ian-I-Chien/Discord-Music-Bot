@@ -10,7 +10,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 ## Features
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
-- Spotify links (including `spotify.link` shares) work with `/play` and `/playnext`. Single tracks use public metadata without Spotify authorization. Playlists and albums use the Spotify Web API after one-time account authorization, preserving source order and duplicates while skipping local files and non-track items. The first page can start playback while later pages load in the background, up to the available queue capacity (300 waiting tracks). `/playnext` inserts a Spotify collection ahead of existing waiting tracks without interrupting playback.
+- Spotify links (including `spotify.link` shares) work with `/play` and `/playnext`. Public track, playlist, and album metadata is matched to YouTube audio without Spotify login, client credentials, or account binding. The first readable entry can start playback while the rest join the queue in their original order. Repeated songs are retained, and `/playnext` can insert a Spotify collection ahead of the waiting queue without interrupting playback.
 - Spotify requests search YouTube for a matching title, artist, and duration, rejecting obvious version mismatches and uncertain results. Audio comes from YouTube, not Spotify; the panel links back to the original Spotify track. Public-page metadata can change or be unavailable by region; use a YouTube URL if single-track lookup fails. Podcasts and direct Spotify audio are not supported.
 - Playlist and Mix entries load progressively: playback can start as soon as the first playable entry arrives, while the remaining entries join the queue in their original order. Later `/play` requests stay behind that import; `/playnext` retains priority. Leaving cancels background imports. Mixes remain limited to 20 entries and the waiting queue to 300 tracks. If a background import fails, already loaded tracks remain available; diagnostics stay in service logs.
 - When starting playback, the command's private thinking indicator remains until audio actually starts. Adding tracks to an existing session completes immediately after enqueueing. Failures, cancellation, and a two-minute startup timeout settle the private response instead of leaving it pending.
@@ -155,20 +155,10 @@ When a new track starts, the bot posts a new active playback panel and then dele
 
 Automatic progress refreshes skip ticks while a panel request is pending. This lets the request finish under Discord rate limits so queue, pause/resume and other user controls can proceed.
 
-## Spotify playlist and album authorization
+## Spotify public collections
 
-Single-track links still require only `DISCORD_TOKEN`. Collection imports additionally need a one-time Spotify account connection. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), enable Web API, and register the exact redirect URI `http://127.0.0.1:8888/callback`.
+Only `DISCORD_TOKEN` is required. Spotify links supply public song metadata; all audio is resolved and played from YouTube. There is no Spotify account authorization, OAuth callback, token storage, or owner-specific API access.
 
-On your local computer, run the command below from the project directory, replacing `YOUR_CLIENT_ID` with the app Client ID (not a Client Secret):
+Public Spotify embeds may expose only part of a collection, commonly the first 100 playlist entries. A 580-track playlist can therefore yield only 100 tracks. The bot does not invent missing songs, replace the list with a YouTube Mix, or claim the visible subset is the complete playlist. When the original total is available, the queue footer shows the public visible count and original total. Use a YouTube playlist link to import a larger ordered list, subject to the existing 300-track queue capacity.
 
-```sh
-node scripts/authorize-spotify.js YOUR_CLIENT_ID
-```
-
-Open the printed authorization URL in a browser on the same computer, then sign in with the playlist owner's account. The helper uses Authorization Code with PKCE, validates OAuth state, and requests only playlist read permissions. It writes `.spotify-auth.json` with owner-only permissions; tokens are never printed. The callback listens only on the local loopback interface and expires after five minutes.
-
-Copy `.spotify-auth.json` securely into the desired bot environment's working directory and restart that service. The bot refreshes expired access tokens and persists rotated refresh tokens automatically. `SPOTIFY_AUTH_FILE` may optionally select another secure path. Do not commit or share authorization files, put them in release archives, or paste tokens into chat. The default authorization file and its temporary files are excluded by `.gitignore`; deployments must preserve that file just like `.env`.
-
-Spotify's current playlist endpoint only permits lists owned by, or collaboratively editable by, the authorized account. A public link alone does not guarantee full access. Other users' lists may return 403 unless the owner adds this account as a collaborator. Do not treat the public embed's first 100 entries as a complete playlist. Current Development Mode requirements and user limits also apply; see the [Spotify migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide) and [playlist endpoint documentation](https://developer.spotify.com/documentation/web-api/reference/get-playlists-items).
-
-Imports fetch at most 50 items per API page. They retain original ordering and repeated songs, respect the available queue capacity, and stop background work when the session closes. Rate limits and partial background failures are logged only in service logs; already queued tracks remain playable. Successful command responses stay pending until playback begins and are then dismissed without public loading notices.
+Shorter public playlists and albums import the readable songs in order, preserving duplicates. Metadata limits, regional availability, and changes to Spotify's public pages may affect imports. First-track playback does not wait for the optional source-size lookup. Stopping the session cancels background work; loading notices and technical diagnostics stay out of public chat.

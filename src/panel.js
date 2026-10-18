@@ -47,6 +47,8 @@ export function queuePayload(session, requestedPage = 0) {
   const s = { ...session, queue: session.queue.filter(item => !item.playlistPending), queuePage: requestedPage };
   const ended = Boolean(s.closed);
   const { page, pages, start } = queuePagination(s);
+  const source = s.spotifyCollectionInfo;
+  const partial = source?.total > source?.visible && s.queue.some(item => item.spotifyCollectionPage === source.page) ? ` · Spotify 公開可見 ${source.visible}/${source.total} 首` : '';
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)
     .addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true })
     .setDescription(s.queue.length ? s.queue.slice(start, start + QUEUE_PAGE_SIZE).map((t, n) => {
@@ -54,7 +56,7 @@ export function queuePayload(session, requestedPage = 0) {
       const duration = t.duration > 0 ? ` · ${time(t.duration)}` : '';
       return `**${String(start + n + 1).padStart(2, '0')}**  ${title(t, 70)}\n　 ${author}${duration}`;
     }).join('\n\n') : '目前沒有待播歌曲。')
-    .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}` });
+    .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}${partial}` });
   const pagination = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(page === 0 ? 'music:queue-start' : `music:queue-page:${page - 1}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),

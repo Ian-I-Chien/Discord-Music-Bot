@@ -131,7 +131,9 @@ async function handle(i, action = i.commandName) {
     let importReady;
     if (collection) {
       const limit = MAX_QUEUE - s.queue.length;
-      importReady = importPlaylist(s, signal => streamSpotifyCollection(collection.page, limit, { signal }), {
+      importReady = importPlaylist(s, signal => streamSpotifyCollection(collection.page, limit, { signal,
+        onInfo: info => { if (!s.closed) { s.spotifyCollectionInfo = info; void updatePanel(s); } },
+      }), {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
         next: action === 'playnext',
       }).ready;
