@@ -5,6 +5,7 @@ import { resolveTrack, normalizeQuery, playlistUrl, streamPlaylist } from './sou
 import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
 import { readSpotifyInput, resolveSpotifyTrack } from './spotify.js';
 import { streamSpotifyCollection } from './spotify-collection.js';
+import { prefetchNext, takeNextSource, cancelPrefetch } from './prefetch.js';
 import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
@@ -22,10 +23,15 @@ client.rest.on('rateLimited', limit => console.warn('Discord API 限流：', JSO
   routeFamily: limit.route?.split('/').filter(Boolean)[0], method: limit.method,
   waitMs: limit.timeToReset ?? limit.retryAfter, global: limit.global,
 })));
-function updatePanel(s) { return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
+async function resolveQueueItem(item, { signal } = {}) {
+  const track = item.spotify && !/^https:\/\/(?:www\.)?youtube\.com\/watch\?v=/.test(item.query)
+    ? await resolveSpotifyTrack(item.spotify, { signal }) : await resolveTrack(item.query, { signal });
+  return item.spotify ? { ...track, spotify: item.spotify } : track;
+}
+function updatePanel(s) { prefetchNext(s, resolveQueueItem); return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
+  s.closed = true; cancelPrefetch(s); cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
   s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
@@ -41,9 +47,14 @@ async function advance(s) {
       const item = s.queue.shift(); const abort = new AbortController(); s.abort = abort;
       const timer = setTimeout(() => abort.abort(), 90000);
       try {
-        const track = item.spotify ? await resolveSpotifyTrack(item.spotify, { signal: abort.signal }) : await resolveTrack(item.query, { signal: abort.signal });
+        let { track, cached } = await takeNextSource(s, item, resolveQueueItem, { signal: abort.signal });
         if (s.closed) return;
-        const response = await fetch(track.url, { signal: abort.signal });
+        let response = await fetch(track.url, { signal: abort.signal });
+        if (!response.ok && cached) {
+          await response.body?.cancel();
+          track = await resolveQueueItem(item, { signal: abort.signal });
+          response = await fetch(track.url, { signal: abort.signal });
+        }
         if (!response.ok || !response.body) throw new Error('音訊下載失敗。');
         s.stream = Readable.fromWeb(response.body);
         s.stream.on('error', () => {});
@@ -89,7 +100,9 @@ async function createSession(interaction, channel) {
     else finish();
   });
   s.player.on(AudioPlayerStatus.Playing, () => {
-    void syncStartedTrackPanel(s, client.ws.ping).then(() => syncChannelStatus(s)).catch(error => {
+    const panel = syncStartedTrackPanel(s, client.ws.ping);
+    prefetchNext(s, resolveQueueItem);
+    void panel.then(() => syncChannelStatus(s)).catch(error => {
       console.error('換歌面板更新失敗：', error.code ?? error.name, error.message);
     });
   });

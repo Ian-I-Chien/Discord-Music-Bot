@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spotifyUrl, parseSpotifyMetadata, readSpotifyTrack, matchSpotifyTrack, resolveSpotifyTrack } from '../src/spotify.js';
+import { spotifyUrl, parseSpotifyMetadata, readSpotifyTrack, resolveSpotifyTrack } from '../src/spotify.js';
 import { panelPayload, queuePayload } from '../src/panel.js';
 
 const page = 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT';
@@ -32,23 +32,24 @@ test('short links resolve safely; off-site redirects and oversized pages are rej
   await assert.rejects(readSpotifyTrack(page, { fetchImpl: async () => new Response('x'.repeat(2_000_001)) }), /過大/);
   await assert.rejects(readSpotifyTrack(page, { fetchImpl: async () => new Response('', { status: 403 }) }), /無法讀取/);
 });
-test('matching rejects covers, wrong artist, wrong duration and prefers official audio', () => {
-  const base = { id: 'dQw4w9WgXcQ', title: 'Rick Astley - Never Gonna Give You Up', duration: 214, uploader: 'Rick Astley' };
-  const audio = { ...base, id: 'h7MYJghRWt0', title: base.title + ' (Official Audio)', duration: 214 };
-  assert.equal(matchSpotifyTrack(metadata, [{ ...base, title: base.title + ' cover' }, { ...base, duration: 400 }, base, audio]).id, audio.id);
-  assert.throws(() => matchSpotifyTrack(metadata, [{ ...base, title: 'Other Artist - Never Gonna Give You Up', uploader: 'Other Artist' }]));
-  assert.throws(() => matchSpotifyTrack(metadata, [{ ...base, title: base.title + ' Live' }]));
-  assert.throws(() => matchSpotifyTrack(metadata, [{ ...base, duration: 200 }]));
-  assert.equal(matchSpotifyTrack({ ...metadata, title: metadata.title + ' Live' }, [{ ...base, title: base.title + ' Live' }]).id, base.id);
+test('Lara Liang / 梁心頤 naming differences do not block the first search result', async () => {
+  const signal = new AbortController().signal;
+  const metadata = { title: '靠近一點點', artists: ['Lara Liang'], duration: 213.24, page };
+  let calls = 0;
+  const track = await resolveSpotifyTrack(metadata, { signal, resolve: async (query, options) => {
+    calls++; assert.equal(query, 'Lara Liang 靠近一點點 official audio');
+    assert.equal(options.signal, signal);
+    return { title: '梁心頤 Lara / 靠近一點點【歌詞】', duration: 212, page: 'https://www.youtube.com/watch?v=cvnEqZIRgFk' };
+  } });
+  assert.equal(calls, 1); assert.equal(track.title, '梁心頤 Lara / 靠近一點點【歌詞】');
+  assert.equal(track.spotify, metadata);
 });
 test('Spotify selection resolves an actual YouTube track with cancellation and attribution', async () => {
   const signal = new AbortController().signal;
   const track = await resolveSpotifyTrack(metadata, {
-    signal, search: async (query, options) => {
-      assert.ok(query.includes('Rick Astley')); assert.equal(options.signal, signal);
-      return [{ id: 'dQw4w9WgXcQ', title: metadata.title, uploader: 'Rick Astley', duration: 213 }];
-    }, resolve: async (url, options) => {
-      assert.equal(options.signal, signal); assert.equal(url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    signal, resolve: async (query, options) => {
+      assert.equal(options.signal, signal); assert.equal(query, 'Rick Astley Never Gonna Give You Up official audio');
+      const url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
       return { title: 'Actual YouTube title', page: url, duration: 213 };
     },
   });
