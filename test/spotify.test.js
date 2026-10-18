@@ -12,7 +12,9 @@ test('Spotify links are canonicalized and unrelated URLs never become fetch targ
   assert.equal(spotifyUrl('https://spotify.link/abc123?si=test'), 'https://spotify.link/abc123');
   assert.equal(spotifyUrl('https://open.spotify.com.evil.test/track/abc'), null);
   assert.equal(spotifyUrl('https://127.0.0.1/a'), null);
-  for (const input of [page.replace('https:', 'http:'), page.replace('/track/', '/playlist/'), page.replace('open.spotify.com', 'user:pass@open.spotify.com'), page.replace('open.spotify.com', 'open.spotify.com:9999')]) assert.throws(() => spotifyUrl(input));
+  assert.equal(spotifyUrl(page.replace('/track/', '/playlist/')), page.replace('/track/', '/playlist/'));
+  assert.equal(spotifyUrl(page.replace('/track/', '/album/')), page.replace('/track/', '/album/'));
+  for (const input of [page.replace('https:', 'http:'), page.replace('/track/', '/artist/'), page.replace('open.spotify.com', 'user:pass@open.spotify.com'), page.replace('open.spotify.com', 'open.spotify.com:9999')]) assert.throws(() => spotifyUrl(input));
 });
 test('metadata requires artist, song and duration and decodes HTML entities', () => {
   assert.deepEqual(parseSpotifyMetadata(html, page), metadata);

@@ -2,10 +2,11 @@ import { MAX_QUEUE } from './controls.js';
 
 // A hidden boundary keeps later /play requests behind this playlist while
 // allowing /playnext to insert before it. It is never passed to the player.
-export function importPlaylist(session, entries, { advance, update, report = console.warn } = {}) {
+export function importPlaylist(session, entries, { advance, update, report = console.warn, next = false } = {}) {
   const controller = new AbortController();
   const boundary = { playlistPending: true };
-  session.queue.push(boundary);
+  if (next) { session.queue.unshift(boundary); session.queuePage = 0; }
+  else session.queue.push(boundary);
   session.playlistImports ??= new Set();
   session.playlistImports.add(controller);
   let resolveFirst; let rejectFirst; let received = false; let lastUpdate = 0;
