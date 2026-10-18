@@ -1,9 +1,9 @@
 import { InteractionContextType, SlashCommandBuilder } from 'discord.js';
 export const commands = [
-  new SlashCommandBuilder().setName('play').setDescription('加入你的語音頻道並播放 YouTube')
-    .addStringOption(o => o.setName('link').setDescription('YouTube 連結或歌名').setRequired(true)),
+  new SlashCommandBuilder().setName('play').setDescription('播放 YouTube，或用 Spotify 單曲連結配歌')
+    .addStringOption(o => o.setName('link').setDescription('YouTube 連結、Spotify 單曲連結或歌名').setRequired(true)),
   new SlashCommandBuilder().setName('playnext').setDescription('插播單曲：目前歌曲結束後優先播放')
-    .addStringOption(o => o.setName('link').setDescription('YouTube 單曲連結或歌名').setRequired(true)),
+    .addStringOption(o => o.setName('link').setDescription('YouTube／Spotify 單曲連結或歌名').setRequired(true)),
   new SlashCommandBuilder().setName('volume').setDescription('調整播放音量')
     .addIntegerOption(o => o.setName('percent').setDescription('音量 0–100，0 為靜音').setMinValue(0).setMaxValue(100).setRequired(true)),
   new SlashCommandBuilder().setName('now-playing').setDescription('切回目前正在播放的歌曲面板'),

@@ -3,6 +3,7 @@ import { AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamTyp
 import { Readable } from 'node:stream';
 import { resolveTrack, normalizeQuery, playlistUrl, streamPlaylist } from './source.js';
 import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
+import { spotifyUrl, readSpotifyTrack, resolveSpotifyTrack } from './spotify.js';
 import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
@@ -39,7 +40,7 @@ async function advance(s) {
       const item = s.queue.shift(); const abort = new AbortController(); s.abort = abort;
       const timer = setTimeout(() => abort.abort(), 90000);
       try {
-        const track = await resolveTrack(item.query, { signal: abort.signal });
+        const track = item.spotify ? await resolveSpotifyTrack(item.spotify, { signal: abort.signal }) : await resolveTrack(item.query, { signal: abort.signal });
         if (s.closed) return;
         const response = await fetch(track.url, { signal: abort.signal });
         if (!response.ok || !response.body) throw new Error('音訊下載失敗。');
@@ -118,8 +119,9 @@ async function handle(i, action = i.commandName) {
     if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
     if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
     const query = (i.options.getString('link') ?? i.options.getString('query', true));
+    const spotify = spotifyUrl(query) ? await readSpotifyTrack(query) : null;
     const list = action === 'playnext' ? null : playlistUrl(query);
-    const normalized = list || normalizeQuery(query);
+    const normalized = spotify?.page || list || normalizeQuery(query);
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
     if (s.queue.length >= MAX_QUEUE) throw new Error('佇列已滿，請稍後再試。');
@@ -129,9 +131,9 @@ async function handle(i, action = i.commandName) {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
       }).ready;
     } else {
-      const item = { query: input };
+      const item = spotify ? { query: input, page: spotify.page, title: spotify.title, author: spotify.artists.join(', '), duration: spotify.duration, spotify } : { query: input };
       enqueueTrack(s, item, action === 'playnext');
-      void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
+      if (!spotify) void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
     }
     void advance(s);
     return { session: s, waitForPlayback: !s.hasStarted };

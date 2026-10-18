@@ -10,6 +10,7 @@ A YouTube music bot that only requires a Discord bot token. Join a voice channel
 ## Features
 
 - Play individual YouTube URLs, import YouTube playlists and Mix snapshots, or search by song name. Search selects the first result and does not guarantee an official recording.
+- Spotify **track** links (including `spotify.link` shares) work with `/play` and `/playnext`. The bot reads public song metadata and searches YouTube for a matching title, artist, and duration. It rejects obvious version mismatches and uncertain results. Audio comes from YouTube, not Spotify; the panel links back to the original Spotify track. No Spotify token or Premium account is required for this implementation. Public-page metadata can change or be unavailable by region; use a YouTube URL if lookup fails. Spotify playlists, albums, podcasts, and direct Spotify audio are not supported.
 - Playlist and Mix entries load progressively: playback can start as soon as the first playable entry arrives, while the remaining entries join the queue in their original order. Later `/play` requests stay behind that import; `/playnext` retains priority. Leaving cancels background imports. Mixes remain limited to 20 entries and the waiting queue to 300 tracks. If a background import fails, already loaded tracks remain available; diagnostics stay in service logs.
 - When starting playback, the command's private thinking indicator remains until audio actually starts. Adding tracks to an existing session completes immediately after enqueueing. Failures, cancellation, and a two-minute startup timeout settle the private response instead of leaving it pending.
 - A compact public Now Playing card with artwork, track link, artist or uploader, elapsed time, duration, and playback controls. Upcoming tracks are shown only on demand through `/queue` or the queue button, in a shared public paginated view with eight tracks per page. The queue stays hidden until requested and replaces the current-track view in the same shared message. A new track automatically restores Now Playing; `/now-playing` and the return button also restore it.
@@ -69,7 +70,7 @@ The bot updates its voice channel status with only the current song title, witho
 | Command | Action |
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
-| `/playnext link:<URL or song name>` | Insert a single track at the front of the waiting queue without interrupting the current song |
+| `/playnext link:<URL or song name>` | Insert a YouTube track or Spotify track match at the front of the waiting queue without interrupting the current song |
 | `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
@@ -79,7 +80,7 @@ The bot updates its voice channel status with only the current song title, witho
 | `/queue` | Open the shared, paginated view of upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, live streams, Spotify, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, Spotify playlists and albums, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 

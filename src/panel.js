@@ -6,7 +6,7 @@ export function time(seconds = 0) {
 }
 function title(track, limit = 120) {
   const label = escapeMarkdown(String(track.title || track.query || 'YouTube').replace(/\s+/g, ' ').slice(0, limit));
-  return /^https:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]{11}$/.test(track.page || '') ? `[${label}](${track.page})` : label;
+  return /^(?:https:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]{11}|https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22})$/.test(track.page || '') ? `[${label}](${track.page})` : label;
 }
 export const QUEUE_PAGE_SIZE = 8;
 export function queuePagination(s, delta = 0) {
@@ -30,6 +30,9 @@ export function panelPayload(s, ping = 0, disabled = false) {
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
   now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true });
+  if (/^https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22}$/.test(track?.spotify?.page || '')) {
+    now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page}) · 播放音源：YouTube` });
+  }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
     new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
