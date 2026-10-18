@@ -128,15 +128,16 @@ async function handle(i, action = i.commandName) {
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
     if (s.queue.length >= MAX_QUEUE) throw new Error('佇列已滿，請稍後再試。');
+    let importReady;
     if (collection) {
       const limit = MAX_QUEUE - s.queue.length;
-      await importPlaylist(s, signal => streamSpotifyCollection(collection.page, limit, { signal }), {
+      importReady = importPlaylist(s, signal => streamSpotifyCollection(collection.page, limit, { signal }), {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
         next: action === 'playnext',
       }).ready;
     } else if (list) {
       const limit = playlistImportLimit(list, s.queue.length);
-      await importPlaylist(s, signal => streamPlaylist(list, limit, { signal }), {
+      importReady = importPlaylist(s, signal => streamPlaylist(list, limit, { signal }), {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
       }).ready;
     } else {
@@ -144,8 +145,11 @@ async function handle(i, action = i.commandName) {
       enqueueTrack(s, item, action === 'playnext');
       if (!spotify) void queueMetadata(input).then(metadata => { Object.assign(item, metadata); void updatePanel(s); });
     }
+    // The response waits outside the guild lock; /leave can abort even the
+    // first metadata page, while queue boundaries retain request ordering.
+    importReady?.catch(() => {});
     void advance(s);
-    return { session: s, waitForPlayback: !s.hasStarted };
+    return { session: s, importReady, waitForPlayback: !s.hasStarted };
   }
   if (action === 'volume') {
     if (!s) {
@@ -244,6 +248,7 @@ client.on('interactionCreate', async i => {
     locks.set(i.guildId, task);
     let result;
     try { result = await task; } finally { if (locks.get(i.guildId) === task) locks.delete(i.guildId); }
+    if (result?.importReady) await result.importReady;
     if (result?.waitForPlayback) await waitForPlayback(result.session);
     await finishQuietReply(i);
     trace('completed');
