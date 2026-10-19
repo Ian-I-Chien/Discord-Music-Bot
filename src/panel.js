@@ -34,7 +34,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}`);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
-  now.setDescription(`${now.toJSON().description}\n\n🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)}`);
+  now.setDescription(`🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)} · 📋 待播 **${s.queue.filter(item => !item.playlistPending).length}** 首\n\n${now.toJSON().description}`);
   if (track) now.addFields(
     { name: '\u200b', value: `\`${progress}\``, inline: true },
     { name: '\u200b', value: `\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``, inline: true },

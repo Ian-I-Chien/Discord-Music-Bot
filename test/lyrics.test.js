@@ -16,7 +16,7 @@ test('LRC timestamps, repeated lines, offsets, malformed rows and bounds', () =>
 });
 test('lyrics follow exact playback boundaries and recovery offsets', () => {
   const lines = parseLrc(record.syncedLyrics);
-  assert.equal(lyricWindow(lines, 1), null);
+  assert.deepEqual(lyricWindow(lines, 1), { previous: undefined, current: 'First line', next: 'Second line' });
   assert.equal(lyricWindow(lines, 2).current, 'First line');
   assert.deepEqual(lyricWindow(lines, 5), { previous: 'First line', current: 'Second line', next: 'Third line' });
   const s = session(); s.lyrics = lines;

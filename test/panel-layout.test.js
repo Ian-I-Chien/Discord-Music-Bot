@@ -32,7 +32,7 @@ test('no empty lyric area; missing lyrics is one line and real lyrics use the sa
   s.lyricsStatus = 'missing'; assert.equal(field().value, '目前沒有同步歌詞');
   s.lyricsStatus = 'unavailable'; assert.equal(field().value, '暫時無法取得歌詞');
   s.lyricsStatus = 'ready'; s.lyrics = Object.assign([{ time: 10, text: 'Later' }], { source: 'LRCLIB' });
-  assert.equal(field(), undefined);
+  assert.equal(field().value, '**▶ Later**');
   s.resource.playbackDuration = 10000;
   assert.equal(field().value, '**▶ Later**'); assert.equal(field().inline, false);
   assert.equal(field().name, '🎤 歌詞');
