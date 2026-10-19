@@ -11,7 +11,7 @@ function title(track, limit = 120) {
   return /^(?:https:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]{11}|https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22})$/.test(track.page || '') ? `[${label}](${track.page})` : label;
 }
 function repeatButton(s, ended) {
-  return new ButtonBuilder().setCustomId('music:cycle-repeat').setLabel(`重複：${repeatLabel(s)}`).setEmoji('🔁').setStyle(ButtonStyle.Secondary).setDisabled(ended);
+  return new ButtonBuilder().setCustomId('music:cycle-repeat').setEmoji(s.repeatMode === 'track' ? '🔂' : '🔁').setStyle(s.repeatMode && s.repeatMode !== 'off' ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(ended);
 }
 export const QUEUE_PAGE_SIZE = 8;
 export function queuePagination(s, delta = 0) {
@@ -47,22 +47,20 @@ export function panelPayload(s, ping = 0, disabled = false) {
     );
   }
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
-    new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
-    new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
+    new ButtonBuilder().setCustomId('music:volume-down').setLabel('−5').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
+    new ButtonBuilder().setCustomId('music:previous').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
+    new ButtonBuilder().setCustomId('music:toggle-pause').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
+    new ButtonBuilder().setCustomId('music:skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
+    new ButtonBuilder().setCustomId('music:volume-up').setLabel('+5').setEmoji('🔊').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) >= 100),
   );
   const queueControls = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
+    new ButtonBuilder().setCustomId('music:queue').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
     repeatButton(s, ended),
   );
-  const settings = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:volume-down').setLabel('音量 −5%').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
-    new ButtonBuilder().setCustomId('music:volume-up').setLabel('音量 +5%').setEmoji('🔊').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) >= 100),
-  );
   const stop = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
+    new ButtonBuilder().setCustomId('music:leave').setEmoji('⏹️').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
-  return { content: '', embeds: [now], components: [row, settings, queueControls, stop], allowedMentions: { parse: [] } };
+  return { content: '', embeds: [now], components: [row, queueControls, stop], allowedMentions: { parse: [] } };
 }
 export function queuePayload(session, requestedPage = 0) {
   // Each private queue view has its own page; never change shared playback state.
@@ -80,11 +78,11 @@ export function queuePayload(session, requestedPage = 0) {
     .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}${partial}` });
   queue.setDescription(`${queue.toJSON().description}\n\n🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)}`);
   const pagination = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(page === 0 ? 'music:queue-start' : `music:queue-page:${page - 1}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
+    new ButtonBuilder().setCustomId(page === 0 ? 'music:queue-start' : `music:queue-page:${page - 1}`).setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId(page >= pages - 1 ? 'music:queue-end' : `music:queue-page:${page + 1}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
+    new ButtonBuilder().setCustomId(page >= pages - 1 ? 'music:queue-end' : `music:queue-page:${page + 1}`).setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
     repeatButton(s, ended),
-    new ButtonBuilder().setCustomId('music:player-view').setLabel('回到播放').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
+    new ButtonBuilder().setCustomId('music:player-view').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
   );
   return { content: '', embeds: [queue], components: [pagination], allowedMentions: { parse: [] } };
 }

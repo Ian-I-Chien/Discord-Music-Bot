@@ -11,15 +11,15 @@ test('panel contains linked track, thumbnail, duration, next tracks and controls
   assert.match(now.description, /01:05/); assert.match(now.description, /04:05/);
   assert.match(now.description, /https:\/\/www.youtube.com/); assert.ok(now.thumbnail.url);
   assert.equal(data.embeds.length,1);
-  assert.equal(data.components.length,4);
-  assert.ok(data.components[2].toJSON().components.some(c=>c.custom_id==='music:queue'));
+  assert.equal(data.components.length,3);
+  assert.ok(data.components[1].toJSON().components.some(c=>c.custom_id==='music:queue'));
   assert.doesNotMatch(now.description,/Song 4/);
-  assert.equal(data.components[0].toJSON().components[1].custom_id,'music:toggle-pause');
+  assert.equal(data.components[0].toJSON().components[2].custom_id,'music:toggle-pause');
   assert.deepEqual(data.allowedMentions.parse, []);
 });
 test('paused and ended panels reflect state and disable old controls', () => {
   const s=session(); s.player.state.status='paused';
-  assert.equal(panelPayload(s).components[0].toJSON().components[1].custom_id,'music:toggle-pause');
+  assert.equal(panelPayload(s).components[0].toJSON().components[2].custom_id,'music:toggle-pause');
   s.closed=true;
   assert.ok(panelPayload(s).components[0].toJSON().components.every(c=>c.disabled));
   assert.equal(time(NaN),'--:--'); assert.equal(time(3601),'1:00:01');
@@ -142,11 +142,11 @@ test('real audio player pause and resume remain usable after a slow progress edi
     release();await pending;await pause;
     assert.equal(s.player.state.status,AudioPlayerStatus.Paused);
     assert.equal(last.embeds[0].toJSON().title,'已暫停');
-    assert.equal(last.components[0].toJSON().components[1].label,'繼續');
+    assert.equal(last.components[0].toJSON().components[2].emoji.name,'▶️');
     assert.equal(await isActivePanel(s,'active'),true);
     togglePause(s);await entersState(s.player,AudioPlayerStatus.Playing,1000);await syncStartedTrackPanel(s);
     assert.equal(last.embeds[0].toJSON().title,'正在播放');
-    assert.equal(last.components[0].toJSON().components[1].label,'暫停');
+    assert.equal(last.components[0].toJSON().components[2].emoji.name,'⏸️');
     assert.equal(s.panel.id,'active');
   } finally {s.closed=true;s.player.stop(true);s.resource.playStream.destroy();}
 });
