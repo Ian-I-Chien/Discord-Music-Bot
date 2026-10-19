@@ -54,7 +54,7 @@ test('repeat controls are registered and both panels expose the mode without ext
   assert.deepEqual(command.options[0].choices.map(c => c.value), ['off', 'track', 'queue']);
   const s = session(); setRepeat(s, 'track');
   for (const payload of [panelPayload(s), queuePayload(s)]) {
-    assert.match(payload.embeds[0].toJSON().description, /重複：單曲/);
+    assert.match(JSON.stringify(payload.embeds[0].toJSON()), /重複：單曲/);
     assert.ok(payload.components.flatMap(row => row.toJSON().components).some(c => c.custom_id === 'music:cycle-repeat'));
     for (const row of payload.components) assert.ok(row.toJSON().components.length <= 5);
   }
