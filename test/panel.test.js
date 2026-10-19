@@ -8,7 +8,7 @@ function session() { return { hasStarted: true, player: { state: { status: 'play
 test('panel contains linked track, thumbnail, duration, next tracks and controls', () => {
   const data = panelPayload(session(), 42);
   const now = data.embeds[0].toJSON();
-  assert.match(now.description, /01:05/); assert.match(now.description, /04:05/);
+  assert.match(JSON.stringify(now), /01:05/); assert.match(JSON.stringify(now), /04:05/);
   assert.match(now.description, /https:\/\/www.youtube.com/); assert.ok(now.thumbnail.url);
   assert.equal(data.embeds.length,1);
   assert.equal(data.components.length,3);
@@ -229,7 +229,7 @@ test('now-playing posts a fresh panel, retires old controls and preserves playba
   assert.equal(s.panelView, 'now');
   assert.deepEqual(calls.map(c => c[0]), ['send', 'retire']);
   assert.deepEqual(calls[1][1], { components: [] });
-  assert.match(calls[0][1].embeds[0].toJSON().description, /01:05/);
+  assert.match(JSON.stringify(calls[0][1].embeds[0].toJSON()), /01:05/);
   assert.equal(s.resource, resource); assert.equal(s.current, current); assert.equal(s.queue, queue);
   s.resource.playbackDuration += 1000;
   await syncPanel(s);

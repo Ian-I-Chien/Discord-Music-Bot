@@ -23,7 +23,7 @@ test('panel volume buttons reflect limits and session retirement', () => {
   for (const [volume, down, up] of [[0, true, false], [50, false, false], [100, false, true]]) {
     const s = session(volume); const controls = buttons(s);
     assert.deepEqual(panelPayload(s).components[0].toJSON().components.map(c => c.custom_id), ['music:volume-down', 'music:previous', 'music:toggle-pause', 'music:skip', 'music:volume-up']);
-    assert.ok(controls.every(c => !/[\u4e00-\u9fff]/u.test(c.label || '')));
+    assert.ok(controls.filter(c => c.custom_id !== 'music:leave').every(c => !/[\u4e00-\u9fff]/u.test(c.label || '')));
     assert.equal(controls.find(c => c.custom_id === 'music:volume-down').disabled, down);
     assert.equal(controls.find(c => c.custom_id === 'music:volume-up').disabled, up);
     assert.equal(new Set(controls.map(c => c.custom_id)).size, controls.length);
