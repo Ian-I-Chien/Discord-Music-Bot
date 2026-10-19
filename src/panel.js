@@ -34,7 +34,6 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}`);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
-  now.setDescription(`🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)} · 📋 待播 **${s.queue.filter(item => !item.playlistPending).length}** 首\n\n${now.toJSON().description}`);
   if (track) now.addFields(
     { name: '\u200b', value: `\`${progress}\``, inline: true },
     { name: '\u200b', value: `\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``, inline: true },
@@ -48,6 +47,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     : '';
   const lyricContent = lyricRows(lyrics, lyricNotice);
   if (lyricContent) now.addFields({ name: '🎤 歌詞', value: lyricContent, inline: false });
+  now.addFields({ name: '\u200b', value: `🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)} · 📋 待播 **${s.queue.filter(item => !item.playlistPending).length}** 首`, inline: false });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:volume-down').setLabel('−5').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
     new ButtonBuilder().setCustomId('music:previous').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),

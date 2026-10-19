@@ -41,6 +41,6 @@ test('rapid volume steps update the same panel and keep the final live volume', 
   stepVolume(s, 5); stepVolume(s, -5); await syncPanel(s); await work;
   assert.equal(s.volume, 55); assert.equal(sends, 0);
   const embed = edits.at(-1).embeds[0].toJSON();
-  const volume = embed.fields?.find(field => field.name === '音量')?.value ?? embed.description;
+  const volume = embed.fields.at(-1).value;
   assert.match(volume, /55%/);
 });

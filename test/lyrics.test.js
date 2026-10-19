@@ -66,7 +66,7 @@ test('single-line status and inline lyrics escape untrusted text and disappear o
   const s = session(); s.repeatMode = 'track'; s.volume = 50;
   s.lyrics = [{ time: 0, text: '@everyone **hello** [link](https://example.com)' }];
   const embed = panelPayload(s).embeds[0].toJSON();
-  assert.match(embed.description, /🔊 音量 \*\*50%\*\* · 🔁 重複：單曲/);
+  assert.match(embed.fields.at(-1).value, /🔊 音量 \*\*50%\*\* · 🔁 重複：單曲/);
   const field = embed.fields.find(f => f.name.includes('歌詞'));
   assert.equal(field.inline, false); assert.ok(field.value.includes('@\u200beveryone')); assert.ok(field.value.includes('\\*\\*hello\\*\\*'));
   assert.ok(field.value.length <= 1024);

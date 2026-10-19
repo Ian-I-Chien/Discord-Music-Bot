@@ -36,6 +36,10 @@ test('no empty lyric area; missing lyrics is one line and real lyrics use the sa
   s.resource.playbackDuration = 10000;
   assert.equal(field().value, '**▶ Later**'); assert.equal(field().inline, false);
   assert.equal(field().name, '🎤 歌詞');
+  const embed = panelPayload(s).embeds[0].toJSON();
+  assert.match(embed.fields.at(-1).value, /音量.*重複.*待播/);
+  assert.equal(embed.fields.at(-2).name, '🎤 歌詞');
+  assert.ok(!embed.description.includes('音量'));
 });
 test('stop and leave retains its explicit text while transport stays compact', () => {
   const payload = panelPayload(session());
