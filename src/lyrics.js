@@ -1,5 +1,6 @@
 import { Converter } from 'opencc-js';
 import { neteaseLyrics, kugouLyrics } from './lyric-providers.js';
+import { youtubeLyrics } from './youtube-captions.js';
 const simplified = Converter({ from: 'tw', to: 'cn' });
 const normalize = value => simplified(String(value || '')).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const cache = new Map();
@@ -65,8 +66,8 @@ export function lyricMetadata(track) {
 
 export async function findLyrics(track, { signal, fetchImpl = fetch, now = Date.now } = {}) {
   const { title, artist } = lyricMetadata(track);
-  if (!title || !artist || !(track.duration > 0)) return null;
-  const key = `${title}|${artist}|${Math.round(track.duration)}`;
+  if (!(track.duration > 0)) return null;
+  const key = `${title}|${artist}|${Math.round(track.duration)}|${track.page || ''}`;
   signal?.throwIfAborted();
   const cached = cache.get(key);
   if (cached && cached.expiry > now()) return cached.lines;
@@ -104,6 +105,10 @@ export async function findLyrics(track, { signal, fetchImpl = fetch, now = Date.
     if (lines || budget.aborted) break;
   }
   signal?.throwIfAborted();
+  if (!lines && track.captionTracks?.length) {
+    try { lines = await youtubeLyrics(track, { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(3000)]), fetchImpl }); }
+    catch { sourceFailure = true; signal?.throwIfAborted(); }
+  }
   if (!lines && (sourceFailure || budget.aborted)) throw new Error('Lyrics sources unavailable');
   if (cache.size >= 100) cache.delete(cache.keys().next().value);
   if (!budget.aborted && (lines || !sourceFailure)) cache.set(key, { lines, expiry: now() + (lines ? 21600000 : 600000) });
