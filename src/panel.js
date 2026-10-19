@@ -53,7 +53,12 @@ export function panelPayload(s, ping = 0, disabled = false) {
     new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
-  return { content: '', embeds: [now], components: [row, new ActionRowBuilder().addComponents(repeatButton(s, ended))], allowedMentions: { parse: [] } };
+  const settings = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('music:volume-down').setLabel('音量 −5%').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
+    new ButtonBuilder().setCustomId('music:volume-up').setLabel('音量 +5%').setEmoji('🔊').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) >= 100),
+    repeatButton(s, ended),
+  );
+  return { content: '', embeds: [now], components: [row, settings], allowedMentions: { parse: [] } };
 }
 export function queuePayload(session, requestedPage = 0) {
   // Each private queue view has its own page; never change shared playback state.

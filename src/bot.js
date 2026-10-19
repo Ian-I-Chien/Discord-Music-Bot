@@ -12,7 +12,7 @@ import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
 import { sendVoiceLeave } from './voice-state.js';
 import { registerCommands } from './commands.js';
-import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
+import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, stepVolume, playlistImportLimit, togglePause, rememberTrack, previousTrack } from './controls.js';
 import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel, refreshPlaybackProgress } from './panel.js';
 import { cancelRecovery, endedEarly, playbackSeconds, recoverPlayback } from './recovery.js';
 import { openRecoveryAudio } from './recovery-audio.js';
@@ -198,6 +198,8 @@ async function handle(i, action = i.commandName) {
     return { queueSession: s, page };
   }
   switch (action) {
+    case 'volume-down': stepVolume(s, -5); return { session: s };
+    case 'volume-up': stepVolume(s, 5); return { session: s };
     case 'repeat': setRepeat(s, i.options.getString('mode', true)); return { session: s };
     case 'cycle-repeat': cycleRepeat(s); return { session: s };
     case 'player-view': s.panelView = 'now'; return { session: s };
