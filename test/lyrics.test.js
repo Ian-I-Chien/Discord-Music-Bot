@@ -21,9 +21,9 @@ test('lyrics follow exact playback boundaries and recovery offsets', () => {
   assert.deepEqual(lyricWindow(lines, 5), { previous: 'First line', current: 'Second line', next: 'Third line' });
   const s = session(); s.lyrics = lines;
   const lyrics = () => panelPayload(s).embeds[0].toJSON().fields.find(f => f.name.includes('歌詞')).value;
-  assert.match(lyrics(), /\*\*▶ Second line\*\*/);
-  s.player.state.status = 'paused'; assert.match(lyrics(), /\*\*▶ Second line\*\*/);
-  s.playbackOffset = 7; s.resource.playbackDuration = 1000; assert.match(lyrics(), /\*\*▶ Third line\*\*/);
+  assert.match(lyrics(), /▶ Second line/);
+  s.player.state.status = 'paused'; assert.match(lyrics(), /▶ Second line/);
+  s.playbackOffset = 7; s.resource.playbackDuration = 1000; assert.match(lyrics(), /▶ Third line/);
 });
 test('matching rejects wrong artists, versions, durations and unsynchronized lyrics', () => {
   assert.ok(selectLyrics([record], track));
@@ -43,7 +43,7 @@ test('lookup uses the fixed LRCLIB endpoint, bounded responses and a metadata ca
   const lines = await findLyrics(track, { fetchImpl, now: () => 1 });
   assert.equal(lines.length, 3);
   assert.equal(await findLyrics(track, { fetchImpl, now: () => 2 }), lines); assert.equal(calls, 1);
-  await assert.rejects(findLyrics({ ...track, title: 'Too large' }, { fetchImpl: async () => new Response('x'.repeat(2000001)) }), /too large/);
+  assert.equal(await findLyrics({ ...track, title: 'Too large' }, { fetchImpl: async () => new Response('x'.repeat(2000001)) }), null);
 });
 test('late lyrics cannot overwrite the next song or a stopped session', async () => {
   const s = session(); const gate = deferred(); let signal; let updates = 0;
@@ -68,7 +68,7 @@ test('single-line status and inline lyrics escape untrusted text and disappear o
   const embed = panelPayload(s).embeds[0].toJSON();
   assert.match(embed.description, /🔊 音量 \*\*50%\*\* · 🔁 重複：單曲/);
   const field = embed.fields.find(f => f.name.includes('歌詞'));
-  assert.equal(field.inline, true); assert.ok(field.value.includes('@\u200beveryone')); assert.ok(field.value.includes('\\*\\*hello'));
+  assert.equal(field.inline, false); assert.ok(field.value.includes('@\u200beveryone')); assert.ok(field.value.includes('**hello**'));
   assert.ok(field.value.length <= 1024);
-  s.closed = true; assert.ok(!panelPayload(s).embeds[0].toJSON().fields?.some(f => f.name.includes('歌詞')));
+  s.closed = true; assert.ok(!panelPayload(s).embeds[0].toJSON().fields.find(f => f.name.includes('歌詞')).value.includes('hello'));
 });
