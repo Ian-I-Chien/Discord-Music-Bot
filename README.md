@@ -74,6 +74,7 @@ The bot updates its voice channel status with only the current song title, witho
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
 | `/playnext link:<URL or song name>` | Insert a YouTube track or Spotify track/collection ahead of the waiting queue without interrupting the current song |
 | `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
+| `/repeat mode:<off|track|queue>` | Turn repeat off, repeat the current track, or loop the active queue |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/previous` | Replay the previous track from the beginning; return the interrupted track to the front of the queue |
@@ -82,7 +83,7 @@ The bot updates its voice channel status with only the current song title, witho
 | `/queue` | Open the shared, paginated view of upcoming tracks |
 | `/leave` | Clear the queue and disconnect |
 
-Join a regular voice channel first. Stage channels, live streams, repeat mode, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
+Join a regular voice channel first. Stage channels, live streams, and restoring queues after a restart are not currently supported. Startup clears leftover voice membership; `/leave` can also disconnect a stale connection without an in-memory playback session. Mix links import at most 20 tracks per request to reduce startup time; they do not enable endless radio playback. Playlist imports use the available queue capacity (up to 300 waiting tracks); unavailable tracks may be skipped. A video URL containing a `list` parameter imports that playlist. Remove the `list` parameter to play only the video. Bot responses and command descriptions are currently in Traditional Chinese.
 
 ## Docker Compose
 
@@ -163,3 +164,9 @@ Only `DISCORD_TOKEN` is required. Spotify links supply public song metadata; all
 Public Spotify embeds may expose only part of a collection, commonly the first 100 playlist entries. A 580-track playlist can therefore yield only 100 tracks. The bot does not invent missing songs, replace the list with a YouTube Mix, or claim the visible subset is the complete playlist. When the original total is available, the queue footer shows the public visible count and original total. Use a YouTube playlist link to import a larger ordered list, subject to the existing 300-track queue capacity.
 
 Shorter public playlists and albums import the readable songs in order, preserving duplicates. Metadata limits, regional availability, and changes to Spotify's public pages may affect imports. First-track playback does not wait for the optional source-size lookup. Stopping the session cancels background work; loading notices and technical diagnostics stay out of public chat.
+
+## Repeat modes
+
+Use `/repeat mode:off|track|queue` or the repeat button on either panel. Off is the default. Track replays the current song after a normal ending; Queue returns completed songs to the tail of the active queue, including later additions and intentional duplicates. Changing modes does not interrupt playback or change volume.
+
+Skip always advances; Queue mode returns the skipped song to the tail. Previous preserves the interrupted song once. Failed playback is not repeated after recovery is exhausted. The prepared-source window stays bounded to five and follows repeat order; expired sources are resolved again. Stop clears the mode and queue, and the three-minute empty-voice disconnect applies in every mode.
