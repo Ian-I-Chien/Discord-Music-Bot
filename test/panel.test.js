@@ -12,7 +12,7 @@ test('panel contains linked track, thumbnail, duration, next tracks and controls
   assert.match(now.description, /https:\/\/www.youtube.com/); assert.ok(now.thumbnail.url);
   assert.equal(data.embeds.length,1);
   assert.equal(data.components.length,4);
-  assert.ok(data.components[1].toJSON().components.some(c=>c.custom_id==='music:queue'));
+  assert.ok(data.components[2].toJSON().components.some(c=>c.custom_id==='music:queue'));
   assert.doesNotMatch(now.description,/Song 4/);
   assert.equal(data.components[0].toJSON().components[1].custom_id,'music:toggle-pause');
   assert.deepEqual(data.allowedMentions.parse, []);

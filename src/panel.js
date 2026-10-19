@@ -62,7 +62,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
   const stop = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
-  return { content: '', embeds: [now], components: [row, queueControls, settings, stop], allowedMentions: { parse: [] } };
+  return { content: '', embeds: [now], components: [row, settings, queueControls, stop], allowedMentions: { parse: [] } };
 }
 export function queuePayload(session, requestedPage = 0) {
   // Each private queue view has its own page; never change shared playback state.
