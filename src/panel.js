@@ -1,5 +1,6 @@
 import { repeatLabel } from './repeat.js';
 import { lyricWindow } from './lyrics.js';
+import { lyricRows, progressRow } from './panel-layout.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, escapeMarkdown } from 'discord.js';
 export function time(seconds = 0) {
   if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -26,12 +27,11 @@ export function panelPayload(s, ping = 0, disabled = false) {
   const track = s.current;
   const elapsed = (s.playbackOffset || 0) + (s.resource?.playbackDuration || 0) / 1000;
   const fraction = track?.duration > 0 ? Math.min(1, elapsed / track.duration) : 0;
-  const position = Math.floor(fraction * 12);
-  const bar = '━'.repeat(position) + '●' + '─'.repeat(12 - position);
+  const progress = progressRow(fraction, `${time(elapsed)} / ${time(track?.duration ?? NaN)}`);
   const now = new EmbedBuilder().setColor(ended ? 0x747f8d : 0xc87941)
     .setTitle(ended ? '播放結束' : !track ? '音樂播放器' : paused ? '已暫停' : '正在播放');
   if (track) {
-    now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`${bar}\`\n\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``);
+    now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`\`\`\n${progress}\n\`\`\``);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
   now.setDescription(`${now.toJSON().description}\n\n🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)}`);
@@ -39,13 +39,10 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page})` });
   }
   const lyrics = !ended && track && lyricWindow(s.lyrics, elapsed);
-  if (lyrics) {
-    const safe = text => escapeMarkdown(String(text || '').replace(/@/g, '@\u200b')).slice(0, 300);
-    now.addFields(
-      { name: '\u200b', value: '\u200b', inline: true },
-      { name: '🎤 歌詞 · LRCLIB', value: [lyrics.previous && safe(lyrics.previous), `**▶ ${safe(lyrics.current)}**`, lyrics.next && safe(lyrics.next)].filter(Boolean).join('\n'), inline: true },
-    );
-  }
+  const lyricNotice = !ended && track && !s.lyrics?.length
+    ? s.lyricsStatus === 'missing' ? '目前沒有同步歌詞' : s.lyricsStatus === 'unavailable' ? '暫時無法取得歌詞' : ''
+    : '';
+  now.addFields({ name: '🎤 歌詞', value: `\`\`\`\n${lyricRows(lyrics, lyricNotice)}\n\`\`\``, inline: false });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:volume-down').setLabel('−5').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
     new ButtonBuilder().setCustomId('music:previous').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),

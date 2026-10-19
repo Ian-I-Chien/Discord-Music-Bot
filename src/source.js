@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { selectCaptionTracks } from './youtube-captions.js';
 
 // --lazy-playlist avoids collecting the entire list before emitting entries.
 export async function* streamPlaylist(input, limit = 300, { signal, spawnProcess = spawn } = {}) {
@@ -77,7 +78,7 @@ export function resolveTrack(query, { signal } = {}) {
       try {
         const raw = JSON.parse(out); const data = raw.entries?.[0] ?? raw;
         if (!data.url || data.is_live || data.acodec !== 'opus' || data.ext !== 'webm') throw new Error();
-        finish(null, { title: data.title || 'YouTube', url: data.url, page: data.webpage_url, duration: data.duration, author: data.artist || data.uploader || data.channel, thumbnail: data.thumbnail });
+        finish(null, { title: data.title || 'YouTube', url: data.url, page: data.webpage_url, duration: data.duration, author: data.artist || data.uploader || data.channel, thumbnail: data.thumbnail, captionTracks: selectCaptionTracks(data) });
       } catch { finish(new Error('找不到可播放的 WebM Opus 音源；目前不支援直播。')); }
     });
   });

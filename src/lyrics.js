@@ -1,4 +1,8 @@
-const normalize = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+import { Converter } from 'opencc-js';
+import { neteaseLyrics, kugouLyrics } from './lyric-providers.js';
+import { youtubeLyrics } from './youtube-captions.js';
+const simplified = Converter({ from: 'tw', to: 'cn' });
+const normalize = value => simplified(String(value || '')).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const cache = new Map();
 const clean = value => String(value || '').replace(/official\s*(music|lyric)?\s*(video|audio|mv)?|music video|lyrics? video|官方|完整版|歌詞版|中字/gi, '').replace(/\s+/g, ' ').trim();
 
@@ -33,7 +37,7 @@ export function selectLyrics(records, track) {
   const title = normalize(track.spotify?.title || track.title);
   const artist = normalize(track.spotify?.artists?.join(' ') || track.author);
   const context = normalize(`${track.title || ''} ${track.author || ''}`);
-  const versions = value => ['live', 'remix', 'acoustic', 'karaoke', 'spedup', '現場', '翻唱', '伴奏'].filter(word => normalize(value).includes(word)).join(',');
+  const versions = value => ['live', 'remix', 'acoustic', 'karaoke', 'spedup', '現場', '翻唱', '伴奏'].filter(word => normalize(value).includes(normalize(word))).join(',');
   let best = null;
   for (const record of records.slice(0, 100)) {
     const candidate = normalize(record.trackName), performer = normalize(record.artistName);
@@ -51,48 +55,85 @@ export function selectLyrics(records, track) {
   return best?.lines || null;
 }
 
-export async function findLyrics(track, { signal, fetchImpl = fetch, now = Date.now } = {}) {
+export function lyricMetadata(track) {
   const bracket = track.title?.match(/[【《〈]([^】》〉]+)[】》〉]/)?.[1];
-  const title = clean(track.spotify?.title || bracket || String(track.title || '').replace(new RegExp('^' + String(track.author || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-–—:]?\\s*', 'i'), '').split(/\s[-–—]\s/).at(-1));
+  let title = clean(track.spotify?.title || bracket || String(track.title || '').replace(new RegExp('^' + String(track.author || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-–—:]?\\s*', 'i'), '').split(/\s[-–—]\s/).at(-1));
+  // English subtitles often make a Chinese-title search needlessly restrictive.
+  if (bracket && !track.spotify && /\p{Script=Han}/u.test(title)) title = title.match(/[\p{Script=Han}\p{N}·]+/u)?.[0] || title;
   const artist = clean(track.spotify?.artists?.join(' ') || track.author);
-  if (!title || !artist || !(track.duration > 0)) return null;
-  const key = `${title}|${artist}|${Math.round(track.duration)}`;
+  return { title: title.slice(0, 300), artist: artist.slice(0, 300) };
+}
+
+export async function findLyrics(track, { signal, fetchImpl = fetch, now = Date.now } = {}) {
+  const { title, artist } = lyricMetadata(track);
+  if (!(track.duration > 0)) return null;
+  const key = `${title}|${artist}|${Math.round(track.duration)}|${track.page || ''}`;
   signal?.throwIfAborted();
   const cached = cache.get(key);
   if (cached && cached.expiry > now()) return cached.lines;
-  const url = new URL('https://lrclib.net/api/search');
-  url.searchParams.set('q', (track.spotify ? `${artist} ${title}` : title).slice(0, 400));
-  const response = await fetchImpl(url, { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(6000)]), redirect: 'error', headers: { 'User-Agent': '1an-Discord-Music-Bot/1.0 (https://github.com/Ian-I-Chien/Discord-Music-Bot)' } });
-  if (!response.ok || !response.body) return null;
-  const reader = response.body.getReader(); let size = 0; const chunks = [];
-  try {
-    while (true) {
-      const { done, value } = await reader.read(); if (done) break;
-      size += value.byteLength;
-      if (size > 2000000) throw new Error('Lyrics response too large');
-      chunks.push(Buffer.from(value));
-    }
-  } finally { await reader.cancel().catch(() => {}); }
+  const budget = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(12000)]);
+  let sourceFailure = false;
+  const getJson = async url => {
+    budget.throwIfAborted();
+    const response = await fetchImpl(url, { signal: AbortSignal.any([budget, AbortSignal.timeout(3000)]), redirect: 'error', headers: { 'User-Agent': '1an-Discord-Music-Bot/1.0 (https://github.com/Ian-I-Chien/Discord-Music-Bot)' } });
+    if (!response.ok || !response.body) { sourceFailure = true; return null; }
+    const reader = response.body.getReader(); let size = 0; const chunks = [];
+    try {
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        size += value.byteLength;
+        if (size > 2000000) throw new Error('Lyrics response too large');
+        chunks.push(Buffer.from(value));
+      }
+    } finally { await reader.cancel().catch(() => {}); }
+    budget.throwIfAborted();
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  };
+  let lines = null;
+  const providers = [
+    async () => {
+      const url = new URL('https://lrclib.net/api/search');
+      url.searchParams.set('q', (track.spotify ? `${artist} ${title}` : title).slice(0, 400));
+      const selected = selectLyrics(await getJson(url), track);
+      return selected && Object.assign(selected, { source: 'LRCLIB' });
+    },
+    () => neteaseLyrics(track, simplified(title), simplified(artist), { getJson, select: selectLyrics }),
+    () => kugouLyrics(track, simplified(title), simplified(artist), { getJson, select: selectLyrics }),
+  ];
+  for (const lookup of providers) {
+    try { lines = await lookup(); } catch { sourceFailure = true; signal?.throwIfAborted(); }
+    if (lines || budget.aborted) break;
+  }
   signal?.throwIfAborted();
-  const lines = selectLyrics(JSON.parse(Buffer.concat(chunks).toString('utf8')), track);
+  if (!lines && track.captionTracks?.length) {
+    try { lines = await youtubeLyrics(track, { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(3000)]), fetchImpl }); }
+    catch { sourceFailure = true; signal?.throwIfAborted(); }
+  }
+  if (!lines && (sourceFailure || budget.aborted)) throw new Error('Lyrics sources unavailable');
   if (cache.size >= 100) cache.delete(cache.keys().next().value);
-  cache.set(key, { lines, expiry: now() + (lines ? 21600000 : 600000) });
+  if (!budget.aborted && (lines || !sourceFailure)) cache.set(key, { lines, expiry: now() + (lines ? 21600000 : 600000) });
   return lines;
 }
 
 export function cancelLyrics(session) {
   session.lyricsRequest?.controller.abort();
-  session.lyricsRequest = null; session.lyrics = null;
+  session.lyricsRequest = null; session.lyrics = null; session.lyricsStatus = null;
 }
 export function startLyrics(session, { lookup = findLyrics, update = () => {} } = {}) {
   if (session.closed || !session.current || session.lyricsRequest?.track === session.current) return;
   cancelLyrics(session);
   const request = { track: session.current, controller: new AbortController() };
   session.lyricsRequest = request;
+  session.lyricsStatus = 'loading';
   request.task = Promise.resolve().then(() => lookup(request.track, { signal: request.controller.signal })).then(lines => {
     if (session.closed || session.lyricsRequest !== request || request.controller.signal.aborted) return;
     session.lyrics = lines;
-    return update();
-  }).catch(() => {}); // Missing lyrics must never interrupt music or post notices.
+    session.lyricsStatus = lines?.length ? 'ready' : 'missing';
+    return Promise.resolve().then(update).catch(() => {});
+  }).catch(() => {
+    if (session.closed || session.lyricsRequest !== request || request.controller.signal.aborted) return;
+    session.lyricsStatus = 'unavailable';
+    return Promise.resolve().then(update).catch(() => {});
+  }); // Status stays inside the existing panel; failures never interrupt music.
   return request.task;
 }
