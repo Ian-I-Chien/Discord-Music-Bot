@@ -29,5 +29,16 @@ test('one player always reserves a full-width lyric block before, during and aft
   const field = embed => embed.fields.find(item => item.name.includes('歌詞'));
   assert.equal(field(before).value.split('\n').length, field(after).value.split('\n').length);
   assert.equal(field(before).inline, false); assert.equal(field(after).inline, false);
-  assert.match(field(after).name, /酷狗/);
+  assert.equal(field(after).name, '🎤 歌詞');
+});
+
+test('missing lyrics is explicit without mislabeling an intro or unfinished lookup', () => {
+  const s = { current: { title: 'Track', duration: 200 }, queue: [], resource: { playbackDuration: 1000 }, player: { state: { status: 'playing' } } };
+  const field = () => panelPayload(s).embeds[0].toJSON().fields.find(item => item.name === '🎤 歌詞');
+  s.lyricsStatus = 'loading'; assert.ok(!field().value.includes('沒有'));
+  s.lyricsStatus = 'missing'; const missing = field().value; assert.match(missing, /目前沒有同步歌詞/);
+  s.lyricsStatus = 'ready'; s.lyrics = Object.assign([{ time: 10, text: 'Later' }], { source: 'LRCLIB' });
+  assert.ok(!field().value.includes('沒有')); assert.equal(field().value.split('\n').length, missing.split('\n').length);
+  assert.equal(field().name, '🎤 歌詞');
+  s.lyrics = null; s.lyricsStatus = 'unavailable'; assert.match(field().value, /暫時無法取得歌詞/);
 });

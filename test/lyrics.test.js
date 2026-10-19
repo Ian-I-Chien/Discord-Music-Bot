@@ -43,7 +43,7 @@ test('lookup uses the fixed LRCLIB endpoint, bounded responses and a metadata ca
   const lines = await findLyrics(track, { fetchImpl, now: () => 1 });
   assert.equal(lines.length, 3);
   assert.equal(await findLyrics(track, { fetchImpl, now: () => 2 }), lines); assert.equal(calls, 1);
-  assert.equal(await findLyrics({ ...track, title: 'Too large' }, { fetchImpl: async () => new Response('x'.repeat(2000001)) }), null);
+  await assert.rejects(findLyrics({ ...track, title: 'Too large' }, { fetchImpl: async () => new Response('x'.repeat(2000001)) }), /sources unavailable/);
 });
 test('late lyrics cannot overwrite the next song or a stopped session', async () => {
   const s = session(); const gate = deferred(); let signal; let updates = 0;

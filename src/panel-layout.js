@@ -17,9 +17,9 @@ function fit(text, columns) {
   }
   return characters.join('') + ' '.repeat(Math.max(0, columns - width)) + '\u200b';
 }
-export function lyricRows(window) {
+export function lyricRows(window, placeholder = '') {
   // Non-empty invisible markers preserve three rows even during an instrumental.
-  return [fit(window?.previous ? `  ${window.previous}` : '', PANEL_COLUMNS), fit(window?.current ? `▶ ${window.current}` : '', PANEL_COLUMNS), fit(window?.next ? `  ${window.next}` : '', PANEL_COLUMNS)].join('\n');
+  return [fit(window?.previous ? `  ${window.previous}` : '', PANEL_COLUMNS), fit(window?.current ? `▶ ${window.current}` : placeholder, PANEL_COLUMNS), fit(window?.next ? `  ${window.next}` : '', PANEL_COLUMNS)].join('\n');
 }
 export function progressRow(fraction, clock) {
   const right = String(clock).padStart(19);

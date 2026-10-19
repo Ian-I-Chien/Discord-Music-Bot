@@ -104,6 +104,7 @@ export async function findLyrics(track, { signal, fetchImpl = fetch, now = Date.
     if (lines || budget.aborted) break;
   }
   signal?.throwIfAborted();
+  if (!lines && (sourceFailure || budget.aborted)) throw new Error('Lyrics sources unavailable');
   if (cache.size >= 100) cache.delete(cache.keys().next().value);
   if (!budget.aborted && (lines || !sourceFailure)) cache.set(key, { lines, expiry: now() + (lines ? 21600000 : 600000) });
   return lines;
@@ -111,17 +112,23 @@ export async function findLyrics(track, { signal, fetchImpl = fetch, now = Date.
 
 export function cancelLyrics(session) {
   session.lyricsRequest?.controller.abort();
-  session.lyricsRequest = null; session.lyrics = null;
+  session.lyricsRequest = null; session.lyrics = null; session.lyricsStatus = null;
 }
 export function startLyrics(session, { lookup = findLyrics, update = () => {} } = {}) {
   if (session.closed || !session.current || session.lyricsRequest?.track === session.current) return;
   cancelLyrics(session);
   const request = { track: session.current, controller: new AbortController() };
   session.lyricsRequest = request;
+  session.lyricsStatus = 'loading';
   request.task = Promise.resolve().then(() => lookup(request.track, { signal: request.controller.signal })).then(lines => {
     if (session.closed || session.lyricsRequest !== request || request.controller.signal.aborted) return;
     session.lyrics = lines;
-    return update();
-  }).catch(() => {}); // Missing lyrics must never interrupt music or post notices.
+    session.lyricsStatus = lines?.length ? 'ready' : 'missing';
+    return Promise.resolve().then(update).catch(() => {});
+  }).catch(() => {
+    if (session.closed || session.lyricsRequest !== request || request.controller.signal.aborted) return;
+    session.lyricsStatus = 'unavailable';
+    return Promise.resolve().then(update).catch(() => {});
+  }); // Status stays inside the existing panel; failures never interrupt music.
   return request.task;
 }

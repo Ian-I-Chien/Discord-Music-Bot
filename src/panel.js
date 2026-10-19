@@ -39,7 +39,10 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page})` });
   }
   const lyrics = !ended && track && lyricWindow(s.lyrics, elapsed);
-  now.addFields({ name: `🎤 歌詞${!ended && s.lyrics?.source ? ` · ${s.lyrics.source}` : ''}`, value: `\`\`\`\n${lyricRows(lyrics)}\n\`\`\``, inline: false });
+  const lyricNotice = !ended && track && !s.lyrics?.length
+    ? s.lyricsStatus === 'missing' ? '目前沒有同步歌詞' : s.lyricsStatus === 'unavailable' ? '暫時無法取得歌詞' : ''
+    : '';
+  now.addFields({ name: '🎤 歌詞', value: `\`\`\`\n${lyricRows(lyrics, lyricNotice)}\n\`\`\``, inline: false });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:volume-down').setLabel('−5').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
     new ButtonBuilder().setCustomId('music:previous').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
