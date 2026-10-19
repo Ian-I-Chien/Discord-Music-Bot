@@ -1,3 +1,4 @@
+import { repeatLabel } from './repeat.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, escapeMarkdown } from 'discord.js';
 export function time(seconds = 0) {
   if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -7,6 +8,9 @@ export function time(seconds = 0) {
 function title(track, limit = 120) {
   const label = escapeMarkdown(String(track.title || track.query || 'YouTube').replace(/\s+/g, ' ').slice(0, limit));
   return /^(?:https:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]{11}|https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22})$/.test(track.page || '') ? `[${label}](${track.page})` : label;
+}
+function repeatButton(s, ended) {
+  return new ButtonBuilder().setCustomId('music:cycle-repeat').setLabel(`重複：${repeatLabel(s)}`).setEmoji('🔁').setStyle(ButtonStyle.Secondary).setDisabled(ended);
 }
 export const QUEUE_PAGE_SIZE = 8;
 export function queuePagination(s, delta = 0) {
@@ -33,6 +37,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
   if (/^https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22}$/.test(track?.spotify?.page || '')) {
     now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page})` });
   }
+  now.addFields({ name: '重複', value: repeatLabel(s), inline: true });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
     new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
@@ -40,7 +45,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
-  return { content: '', embeds: [now], components: [row], allowedMentions: { parse: [] } };
+  return { content: '', embeds: [now], components: [row, new ActionRowBuilder().addComponents(repeatButton(s, ended))], allowedMentions: { parse: [] } };
 }
 export function queuePayload(session, requestedPage = 0) {
   // Each private queue view has its own page; never change shared playback state.
@@ -56,11 +61,13 @@ export function queuePayload(session, requestedPage = 0) {
       const duration = t.duration > 0 ? ` · ${time(t.duration)}` : '';
       return `**${String(start + n + 1).padStart(2, '0')}**  ${title(t, 70)}\n　 ${author}${duration}`;
     }).join('\n\n') : '目前沒有待播歌曲。')
+    .addFields({ name: '重複', value: repeatLabel(s), inline: true })
     .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}${partial}` });
   const pagination = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(page === 0 ? 'music:queue-start' : `music:queue-page:${page - 1}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
     new ButtonBuilder().setCustomId(page >= pages - 1 ? 'music:queue-end' : `music:queue-page:${page + 1}`).setLabel('下一頁').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page >= pages - 1),
+    repeatButton(s, ended),
     new ButtonBuilder().setCustomId('music:player-view').setLabel('回到播放').setEmoji('🎵').setStyle(ButtonStyle.Primary).setDisabled(ended),
   );
   return { content: '', embeds: [queue], components: [pagination], allowedMentions: { parse: [] } };

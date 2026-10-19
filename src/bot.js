@@ -14,6 +14,7 @@ import { MAX_QUEUE, enqueueTrack, applyVolumeCommand, playlistImportLimit, toggl
 import { syncPanel, queueMetadata, syncQueue, repostPanel, syncStartedTrackPanel, isActivePanel, refreshPlaybackProgress } from './panel.js';
 import { cancelRecovery, endedEarly, playbackSeconds, recoverPlayback } from './recovery.js';
 import { openRecoveryAudio } from './recovery-audio.js';
+import { setRepeat, cycleRepeat, repeatFinished, flushRepeatTail } from './repeat.js';
 import { watchEmptyChannel } from './empty-channel.js';
 if (!process.env.DISCORD_TOKEN?.trim()) throw new Error('請設定 DISCORD_TOKEN。');
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
@@ -31,7 +32,7 @@ async function resolveQueueItem(item, { signal } = {}) {
 function updatePanel(s) { prefetchNext(s, resolveQueueItem); return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; cancelPrefetch(s); cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
+  s.closed = true; s.repeatMode = 'off'; s.repeatTail = null; cancelPrefetch(s); cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
   s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
@@ -44,7 +45,7 @@ async function advance(s) {
   try {
     while (!s.closed && s.queue.length) {
       if (s.queue[0].playlistPending) return;
-      const item = s.queue.shift(); const abort = new AbortController(); s.abort = abort;
+      const item = s.queue.shift(); flushRepeatTail(s); const abort = new AbortController(); s.abort = abort;
       const timer = setTimeout(() => abort.abort(), 90000);
       try {
         let { track, cached } = await takeNextSource(s, item, resolveQueueItem, { signal: abort.signal });
@@ -62,7 +63,7 @@ async function advance(s) {
         if (s.closed) { probe.stream.destroy(); return; }
         if (probe.type !== StreamType.WebmOpus && probe.type !== StreamType.OggOpus) throw new Error('音訊格式不符。');
         clearTimeout(timer);
-        s.current = track; s.hasStarted = false; s.playbackOffset = 0;
+        s.current = track; s.currentItem = item; s.hasStarted = false; s.playbackOffset = 0;
         s.resource = createAudioResource(probe.stream, { inputType: probe.type, inlineVolume: true });
         s.resource.volume.setVolume((s.volume ?? 50) / 100);
         s.resource.encoder?.setBitrate(192000);
@@ -78,24 +79,24 @@ async function advance(s) {
 }
 async function createSession(interaction, channel) {
   const connection = joinVoiceChannel({ guildId: interaction.guildId, channelId: channel.id, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: false });
-  const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], volume: 50, current: null, loading: false, closed: false, text: interaction.channel };
+  const s = { guildId: interaction.guildId, voiceChannel: channel, channelId: channel.id, connection, player: createAudioPlayer(), queue: [], repeatMode: 'off', volume: 50, current: null, loading: false, closed: false, text: interaction.channel };
   sessions.set(s.guildId, s); connection.subscribe(s.player);
   s.emptyWatcher = watchEmptyChannel(s, { dispose });
   s.panelTimer = setInterval(() => {
     void refreshPlaybackProgress(s, client.ws.ping).catch(error => console.warn('進度面板更新失敗：', error.code ?? error.name));
   }, 1000);
-  const finish = () => {
-    rememberTrack(s); s.current = null; s.hasStarted = false; s.resource = null; s.playbackOffset = 0;
+  const finish = (reason = 'ended') => {
+    repeatFinished(s, reason); rememberTrack(s); s.currentItem = null; s.current = null; s.hasStarted = false; s.resource = null; s.playbackOffset = 0;
     s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.audioCleanup = null; void advance(s);
   };
   const recover = () => void recoverPlayback(s, {
     open: (track, offset, signal, attempt) => openRecoveryAudio(s, track, offset, signal, attempt),
-    finish, update: () => updatePanel(s),
-  }).catch(error => { console.error('音源恢復錯誤：', error.name); if (!s.closed && !s.recovery) finish(); });
+    finish: () => finish('failed'), update: () => updatePanel(s),
+  }).catch(error => { console.error('音源恢復錯誤：', error.name); if (!s.closed && !s.recovery) finish('failed'); });
   s.finishPlayback = finish;
   s.player.on(AudioPlayerStatus.Idle, () => {
     if (s.closed || s.recovery) return;
-    if (s.manualStop) { s.manualStop = false; finish(); }
+    if (s.manualStop) { s.manualStop = false; finish(s.finishReason || 'skip'); s.finishReason = null; }
     else if (endedEarly(s)) recover();
     else finish();
   });
@@ -190,6 +191,8 @@ async function handle(i, action = i.commandName) {
     return { queueSession: s, page };
   }
   switch (action) {
+    case 'repeat': setRepeat(s, i.options.getString('mode', true)); return { session: s };
+    case 'cycle-repeat': cycleRepeat(s); return { session: s };
     case 'player-view': s.panelView = 'now'; return { session: s };
     case 'now-playing':
       // Also handle return buttons on cards created before the button ID changed.
@@ -198,11 +201,11 @@ async function handle(i, action = i.commandName) {
     case 'toggle-pause': togglePause(s); return { session: s };
     case 'pause': togglePause(s, 'pause'); return { session: s };
     case 'resume': togglePause(s, 'resume'); return { session: s };
-    case 'previous': if (s.recovery) throw new Error('正在恢復音源，請稍後再回上一首。'); s.manualStop = true; try { previousTrack(s); } finally { s.manualStop = false; } if (!s.current) void advance(s); return { session: s };
+    case 'previous': if (s.recovery) throw new Error('正在恢復音源，請稍後再回上一首。'); s.manualStop = true; s.finishReason = 'previous'; try { previousTrack(s); } finally { s.manualStop = false; s.finishReason = null; } if (!s.current) void advance(s); return { session: s };
     case 'skip': {
       if (s.loading) throw new Error('正在載入音源，請稍後再跳歌；或用 /leave 取消。');
       cancelRecovery(s); s.manualStop = true;
-      if (!s.player.stop(true)) { s.manualStop = false; s.finishPlayback(); }
+      if (!s.player.stop(true)) { s.manualStop = false; s.finishPlayback('skip'); }
       return '⏭️ 已跳歌。';
     }
     case 'leave': dispose(s); return '👋 已清空並離開。';

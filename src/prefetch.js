@@ -1,3 +1,4 @@
+import { repeatCandidates } from './repeat.js';
 export const PREFETCH_COUNT = 5;
 
 function fresh(result, now) {
@@ -57,7 +58,7 @@ export function prefetchNext(session, resolve, { now = Date.now } = {}) {
   // advance() clears current before consuming a ready or in-flight source.
   if (!session.current || !session.hasStarted) return;
   const desired = [];
-  for (const item of session.queue) {
+  for (const item of repeatCandidates(session)) {
     if (item.playlistPending || desired.length >= PREFETCH_COUNT) break;
     desired.push(item);
   }

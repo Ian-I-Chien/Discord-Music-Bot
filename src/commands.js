@@ -1,5 +1,8 @@
 import { InteractionContextType, SlashCommandBuilder } from 'discord.js';
 export const commands = [
+  new SlashCommandBuilder().setName('repeat').setDescription('設定重複播放模式')
+    .addStringOption(o => o.setName('mode').setDescription('關閉、單曲或清單重複').setRequired(true)
+      .addChoices({ name: '關閉', value: 'off' }, { name: '單曲', value: 'track' }, { name: '清單', value: 'queue' })),
   new SlashCommandBuilder().setName('play').setDescription('播放 YouTube，或用 Spotify 連結配歌')
     .addStringOption(o => o.setName('link').setDescription('YouTube／Spotify 歌曲、歌單、專輯或歌名').setRequired(true)),
   new SlashCommandBuilder().setName('playnext').setDescription('插播單曲：目前歌曲結束後優先播放')
