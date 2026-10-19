@@ -174,6 +174,8 @@ Shorter public playlists and albums import the readable songs in order, preservi
 
 ## Repeat modes
 
+The player panel also includes volume −5% and +5% buttons. Each click changes the current volume by five percentage points, clamped to 0–100, and refreshes the same panel. Adjustments apply immediately, persist across songs, and work while paused. Only users in the bot's voice channel can operate the controls. At either limit, the corresponding button is disabled.
+
 Use `/repeat mode:off|track|queue` or the repeat button on either panel. Off is the default. Track replays the current song after a normal ending; Queue returns completed songs to the tail of the active queue, including later additions and intentional duplicates. Changing modes does not interrupt playback or change volume.
 
 ## Synchronized lyrics

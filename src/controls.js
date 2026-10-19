@@ -9,6 +9,10 @@ export function setVolume(session, percent) {
   session.volume = percent;
   session.resource?.volume?.setVolume(percent / 100);
 }
+export function stepVolume(session, delta) {
+  if (delta !== -5 && delta !== 5) throw new Error('無效的音量調整。');
+  setVolume(session, Math.max(0, Math.min(100, (session.volume ?? 50) + delta)));
+}
 
 export const MIX_IMPORT_LIMIT = 20;
 export function playlistImportLimit(url, queued) {
