@@ -56,7 +56,8 @@ test('Spotify selection resolves an actual YouTube track with cancellation and a
   const session = { current: track, player: { state: { status: 'playing' } }, queue: [] };
   const panel = panelPayload(session).embeds[0].toJSON();
   assert.ok(panel.description.includes('Actual YouTube title'));
-  assert.ok(panel.fields.some(field => field.value.includes(page) && field.value.includes('YouTube')));
+  assert.ok(panel.fields.some(field => field.value === `[Spotify 原曲](${page})`));
+  assert.ok(!panel.fields.some(field => field.value.includes('播放音源')));
   session.queue.push({ ...metadata, author: 'Rick Astley' });
   assert.ok(queuePayload(session).embeds[0].toJSON().description.includes(page));
 });
