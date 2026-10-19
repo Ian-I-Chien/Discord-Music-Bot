@@ -50,15 +50,19 @@ export function panelPayload(s, ping = 0, disabled = false) {
     new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
     new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
     new ButtonBuilder().setCustomId('music:skip').setLabel('下一首').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(ended || !track || s.loading),
+  );
+  const queueControls = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:queue').setLabel('待播清單').setEmoji('📋').setStyle(ButtonStyle.Secondary).setDisabled(ended),
     repeatButton(s, ended),
   );
   const settings = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:volume-down').setLabel('音量 −5%').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
     new ButtonBuilder().setCustomId('music:volume-up').setLabel('音量 +5%').setEmoji('🔊').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) >= 100),
+  );
+  const stop = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
-  return { content: '', embeds: [now], components: [row, settings], allowedMentions: { parse: [] } };
+  return { content: '', embeds: [now], components: [row, queueControls, settings, stop], allowedMentions: { parse: [] } };
 }
 export function queuePayload(session, requestedPage = 0) {
   // Each private queue view has its own page; never change shared playback state.
