@@ -73,6 +73,7 @@ The bot updates its voice channel status with only the current song title, witho
 | --- | --- |
 | `/play link:<URL or song name>` | Join your voice channel and play, or add to the queue |
 | `/playnext link:<URL or song name>` | Insert a YouTube track or Spotify track/collection ahead of the waiting queue without interrupting the current song |
+| `/random-play link:<playlist URL>` | Shuffle a YouTube playlist/Mix or public Spotify playlist/album before choosing the first song |
 | `/volume percent:<0–100>` | Join your voice channel if needed and set volume immediately; 0 mutes, 100 is original level. The idle player and queue also show current volume. |
 | `/repeat mode:<off|track|queue>` | Turn repeat off, repeat the current track, or loop the active queue |
 | `/pause` | Pause playback |
@@ -158,6 +159,12 @@ When a new track starts, the bot posts a new active playback panel and then dele
 Automatic progress refreshes skip ticks while a panel request is pending. This lets the request finish under Discord rate limits so queue, pause/resume and other user controls can proceed.
 
 ## Spotify public collections
+
+### Random playlist playback
+
+Use `/random-play link:<playlist URL>` to start with a random song and play the imported entries in shuffled order, without replacement. `/play` keeps the original order. An existing song keeps playing, and the shuffled block is appended without rearranging unrelated queued songs. Intentional duplicate entries are preserved.
+
+Random playback first collects a bounded metadata snapshot, so startup can take longer than sequential first-track playback. It does not resolve all audio sources first: after playback starts, the next five sources prepare in the shuffled order. Mixes still import at most 20 entries, other imports use the available queue capacity (up to 300), and Spotify still uses only publicly readable entries. It does not sample hidden Spotify entries or enable repeat. Stop cancels collection and prevents late songs from appearing. If a metadata source fails partway through, the readable subset is shuffled and service logs retain the diagnostic.
 
 Only `DISCORD_TOKEN` is required. Spotify links supply public song metadata; all audio is resolved and played from YouTube. There is no Spotify account authorization, OAuth callback, token storage, or owner-specific API access.
 

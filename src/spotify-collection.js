@@ -36,7 +36,7 @@ export function publicCollectionTotal(html, input) {
 }
 
 export function createSpotifyCollectionReader({ fetchImpl = fetch } = {}) {
-  return async function* streamSpotifyCollection(input, limit = 300, { signal, onInfo = () => {} } = {}) {
+  return async function* streamSpotifyCollection(input, limit = 300, { signal, onInfo = () => {}, readTotal = true } = {}) {
     const page = spotifyUrl(input);
     if (!/^https:\/\/open\.spotify\.com\/(playlist|album)\/[a-zA-Z0-9]{22}$/.test(page || '') || !Number.isInteger(limit) || limit < 1 || limit > 300) throw new Error('Spotify 清單或載入數量無效。');
     const document = await readSpotifyPage(page, { fetchImpl, signal, embed: true });
@@ -49,7 +49,7 @@ export function createSpotifyCollectionReader({ fetchImpl = fetch } = {}) {
       if (++count >= limit) break;
     }
     // Check total size after yielding entries; this does not unlock hidden tracks.
-    if (!signal?.aborted) {
+    if (readTotal && !signal?.aborted) {
       try {
         const source = await readSpotifyPage(page, { fetchImpl, signal });
         const total = publicCollectionTotal(source.html, page);
