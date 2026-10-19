@@ -174,11 +174,11 @@ Shorter public playlists and albums import the readable songs in order, preservi
 
 ## Repeat modes
 
-Player and queue status use one line: `🔊 Volume 50% · 🔁 Repeat: Track` (displayed in Traditional Chinese).
-
 Use `/repeat mode:off|track|queue` or the repeat button on either panel. Off is the default. Track replays the current song after a normal ending; Queue returns completed songs to the tail of the active queue, including later additions and intentional duplicates. Changing modes does not interrupt playback or change volume.
 
 ## Synchronized lyrics
+
+Player and queue status use one line: `🔊 Volume 50% · 🔁 Repeat: Track` (displayed in Traditional Chinese).
 
 After playback starts, the bot searches [LRCLIB](https://lrclib.net/docs) for synchronized lyrics using public song metadata. No additional credentials are required. Matching requires a compatible title, artist, version, and duration within five seconds of the playing audio. Missing, plain-only, or mismatched lyrics stay hidden; lookup failures never block playback or post notices.
 
