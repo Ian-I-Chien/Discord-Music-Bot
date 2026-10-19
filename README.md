@@ -176,4 +176,12 @@ Shorter public playlists and albums import the readable songs in order, preservi
 
 Use `/repeat mode:off|track|queue` or the repeat button on either panel. Off is the default. Track replays the current song after a normal ending; Queue returns completed songs to the tail of the active queue, including later additions and intentional duplicates. Changing modes does not interrupt playback or change volume.
 
+## Synchronized lyrics
+
+Player and queue status use one line: `🔊 Volume 50% · 🔁 Repeat: Track` (displayed in Traditional Chinese).
+
+After playback starts, the bot searches [LRCLIB](https://lrclib.net/docs) for synchronized lyrics using public song metadata. No additional credentials are required. Matching requires a compatible title, artist, version, and duration within five seconds of the playing audio. Missing, plain-only, or mismatched lyrics stay hidden; lookup failures never block playback or post notices.
+
+The existing player panel shows the previous, current, and next lines in an inline field near the lower right. Discord controls the exact layout and may stack fields on narrow screens. There is no separate lyrics page or return button. The existing progress refresh also updates the lyrics, using the audio resource's elapsed time and recovery offset; no extra timer or per-line API requests are added. Pause freezes progression, and changing songs or leaving cancels pending lookup. A bounded metadata cache reduces repeat requests. User-contributed timestamps can still differ from the audio recording, especially for music videos with intros.
+
 Skip always advances; Queue mode returns the skipped song to the tail. Previous preserves the interrupted song once. Failed playback is not repeated after recovery is exhausted. The prepared-source window stays bounded to five and follows repeat order; expired sources are resolved again. Stop clears the mode and queue, and the three-minute empty-voice disconnect applies in every mode.

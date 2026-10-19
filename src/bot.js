@@ -6,6 +6,7 @@ import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
 import { readSpotifyInput, resolveSpotifyTrack } from './spotify.js';
 import { streamSpotifyCollection } from './spotify-collection.js';
 import { shuffledPlaylist } from './shuffle.js';
+import { startLyrics, cancelLyrics } from './lyrics.js';
 import { prefetchNext, takeNextSource, cancelPrefetch } from './prefetch.js';
 import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
@@ -33,7 +34,7 @@ async function resolveQueueItem(item, { signal } = {}) {
 function updatePanel(s) { prefetchNext(s, resolveQueueItem); return Promise.all([syncPanel(s, client.ws.ping), syncQueue(s), syncChannelStatus(s)]); }
 function dispose(s) {
   if (s.closed) return;
-  s.closed = true; s.repeatMode = 'off'; s.repeatTail = null; cancelPrefetch(s); cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
+  s.closed = true; cancelLyrics(s); s.repeatMode = 'off'; s.repeatTail = null; cancelPrefetch(s); cancelPlaylistImports(s); s.emptyWatcher?.close(); cancelRecovery(s); s.queue = []; clearInterval(s.panelTimer); clearTimeout(s.idleTimer); s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.player.stop();
   if (sessions.get(s.guildId) === s) sessions.delete(s.guildId);
   void updatePanel(s);
   s.leaveTask = syncChannelStatus(s).finally(() => { s.connection.destroy(); }).then(() => sendVoiceLeave(client.guilds.cache.get(s.guildId))).catch(() => {});
@@ -87,7 +88,7 @@ async function createSession(interaction, channel) {
     void refreshPlaybackProgress(s, client.ws.ping).catch(error => console.warn('進度面板更新失敗：', error.code ?? error.name));
   }, 1000);
   const finish = (reason = 'ended') => {
-    repeatFinished(s, reason); rememberTrack(s); s.currentItem = null; s.current = null; s.hasStarted = false; s.resource = null; s.playbackOffset = 0;
+    cancelLyrics(s); repeatFinished(s, reason); rememberTrack(s); s.currentItem = null; s.current = null; s.hasStarted = false; s.resource = null; s.playbackOffset = 0;
     s.abort?.abort(); s.stream?.destroy(); s.audioCleanup?.(); s.audioCleanup = null; void advance(s);
   };
   const recover = () => void recoverPlayback(s, {
@@ -103,6 +104,7 @@ async function createSession(interaction, channel) {
   });
   s.player.on(AudioPlayerStatus.Playing, () => {
     const panel = syncStartedTrackPanel(s, client.ws.ping);
+    void startLyrics(s, { update: () => syncPanel(s, client.ws.ping) });
     prefetchNext(s, resolveQueueItem);
     void panel.then(() => syncChannelStatus(s)).catch(error => {
       console.error('換歌面板更新失敗：', error.code ?? error.name, error.message);

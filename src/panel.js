@@ -1,4 +1,5 @@
 import { repeatLabel } from './repeat.js';
+import { lyricWindow } from './lyrics.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, escapeMarkdown } from 'discord.js';
 export function time(seconds = 0) {
   if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -33,11 +34,18 @@ export function panelPayload(s, ping = 0, disabled = false) {
     now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`${bar}\`\n\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
-  now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true });
+  now.setDescription(`${now.toJSON().description}\n\n🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)}`);
   if (/^https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22}$/.test(track?.spotify?.page || '')) {
     now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page})` });
   }
-  now.addFields({ name: '重複', value: repeatLabel(s), inline: true });
+  const lyrics = !ended && track && lyricWindow(s.lyrics, elapsed);
+  if (lyrics) {
+    const safe = text => escapeMarkdown(String(text || '').replace(/@/g, '@\u200b')).slice(0, 300);
+    now.addFields(
+      { name: '\u200b', value: '\u200b', inline: true },
+      { name: '🎤 歌詞 · LRCLIB', value: [lyrics.previous && safe(lyrics.previous), `**▶ ${safe(lyrics.current)}**`, lyrics.next && safe(lyrics.next)].filter(Boolean).join('\n'), inline: true },
+    );
+  }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
     new ButtonBuilder().setCustomId('music:toggle-pause').setLabel(paused ? '繼續' : '暫停').setEmoji(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(ended || !track || Boolean(s.recovery)),
@@ -55,14 +63,13 @@ export function queuePayload(session, requestedPage = 0) {
   const source = s.spotifyCollectionInfo;
   const partial = source?.total > source?.visible && s.queue.some(item => item.spotifyCollectionPage === source.page) ? ` · Spotify 公開可見 ${source.visible}/${source.total} 首` : '';
   const queue = new EmbedBuilder().setColor(0xc87941).setTitle(`待播清單 · ${s.queue.length} 首`)
-    .addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true })
     .setDescription(s.queue.length ? s.queue.slice(start, start + QUEUE_PAGE_SIZE).map((t, n) => {
       const author = escapeMarkdown(String(t.author || 'YouTube').replace(/\s+/g, ' ').slice(0,50));
       const duration = t.duration > 0 ? ` · ${time(t.duration)}` : '';
       return `**${String(start + n + 1).padStart(2, '0')}**  ${title(t, 70)}\n　 ${author}${duration}`;
     }).join('\n\n') : '目前沒有待播歌曲。')
-    .addFields({ name: '重複', value: repeatLabel(s), inline: true })
     .setFooter({ text: `第 ${page + 1} / ${pages} 頁${s.queue.length ? ` · ${start + 1}–${Math.min(start + QUEUE_PAGE_SIZE, s.queue.length)}` : ''}${partial}` });
+  queue.setDescription(`${queue.toJSON().description}\n\n🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)}`);
   const pagination = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(page === 0 ? 'music:queue-start' : `music:queue-page:${page - 1}`).setLabel('上一頁').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(ended || page === 0),
     new ButtonBuilder().setCustomId('music:page-info').setLabel(`${page + 1} / ${pages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),

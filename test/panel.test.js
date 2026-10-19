@@ -29,7 +29,7 @@ test('loading publishes no prompts; playback publishes only one clean panel', as
   const s=session(); s.hasStarted=false; s.loading=true; s.notice='internal import details';
   let sends=0, edits=0;
   const message={ async edit(data) { edits++; assert.equal(data.content,''); } };
-  s.text={ async send(data) { sends++; assert.equal(data.content,''); assert.equal(data.embeds[0].toJSON().fields[0].value,'🔊 **50%**'); return message; } };
+  s.text={ async send(data) { sends++; assert.equal(data.content,''); assert.match(data.embeds[0].toJSON().description,/音量 \*\*50%\*\* · 🔁 重複：關閉/); return message; } };
   await syncPanel(s); assert.equal(sends,0);
   s.hasStarted=true; s.loading=false;
   await syncPanel(s); assert.equal(sends,1);
@@ -88,14 +88,13 @@ test('queue and now-playing replace the same message without duplicate cards', a
 test('volume is visible by default in player, idle and queue views', async () => {
   const s=session(); s.volume=30;
   for(const payload of [panelPayload(s),queuePayload(s)]) {
-    assert.equal(payload.embeds[0].toJSON().fields[0].name,'音量');
-    assert.match(payload.embeds[0].toJSON().fields[0].value,/30%/);
+    assert.match(payload.embeds[0].toJSON().description,/音量 \*\*30%\*\* · 🔁 重複：關閉/);
   }
   s.current=null;s.hasStarted=false;s.showIdlePanel=true;
   let posted;
   s.text={async send(p){posted=p;return {async edit(){}};}};
   await syncPanel(s);assert.equal(posted.embeds[0].toJSON().title,'音樂播放器');
-  assert.match(posted.embeds[0].toJSON().fields[0].value,/30%/);
+  assert.match(posted.embeds[0].toJSON().description,/30%/);
 });
 
 test('slow progress edits do not starve queue button validation or view changes', async () => {
