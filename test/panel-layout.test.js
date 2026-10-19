@@ -3,42 +3,45 @@ import assert from 'node:assert/strict';
 import { lyricRows, progressRow, displayWidth, PANEL_COLUMNS } from '../src/panel-layout.js';
 import { panelPayload } from '../src/panel.js';
 
-test('lyrics retain the same three rows and display width, including CJK and absent lyrics', () => {
-  for (const window of [null, { current: '測試中文歌詞'.repeat(50), previous: 'Short', next: 'next' }, { current: 'one line' }]) {
-    const lines = lyricRows(window).split('\n');
-    assert.equal(lines.length, 3);
-    assert.ok(lines.every(line => displayWidth(line) === PANEL_COLUMNS));
-    assert.ok(lines.every(line => line.length));
-  }
+const session = () => ({ current: { title: 'Track', duration: 200 }, queue: [], resource: { playbackDuration: 5000 }, player: { state: { status: 'playing' } } });
+test('lyrics contain only available lines without padding or code blocks', () => {
+  assert.equal(lyricRows(null), '');
+  assert.equal(lyricRows(null, '目前沒有同步歌詞'), '目前沒有同步歌詞');
+  assert.equal(lyricRows({ current: 'one line' }), '**▶ one line**');
+  const long = lyricRows({ current: '測試中文歌詞'.repeat(50), previous: 'Short', next: 'next' });
+  assert.equal(long.split('\n').length, 3); assert.ok(long.includes('…'));
+  assert.ok(!long.includes('   ')); assert.ok(!long.includes('```'));
+  assert.ok(displayWidth(long.split('\n')[1]) <= PANEL_COLUMNS + 6);
   assert.ok(!lyricRows({ current: '```\n@everyone' }).includes('```'));
 });
-test('the progress bar and right-aligned clock share one constant-width line', () => {
+test('short progress and clock use adjacent inline fields instead of a wrapping padded line', () => {
   for (const fraction of [0, 0.5, 1]) {
-    const row = progressRow(fraction, '01:05 / 04:05');
-    assert.equal(displayWidth(row), PANEL_COLUMNS); assert.equal(row.split('\n').length, 1);
-    assert.ok(row.endsWith('01:05 / 04:05')); assert.equal([...row].filter(char => char === '●').length, 1);
+    const row = progressRow(fraction);
+    assert.equal(row.length, 12); assert.ok(!row.includes(' '));
+    assert.equal([...row].filter(char => char === '●').length, 1);
   }
-  assert.ok(progressRow(1, '04:05 / 04:05').startsWith('━'.repeat(32) + '●'));
+  assert.ok(progressRow(1).endsWith('●'));
+  const data = panelPayload(session()).embeds[0].toJSON();
+  assert.equal(data.fields[0].inline, true); assert.equal(data.fields[1].inline, true);
+  assert.ok(data.fields[1].value.includes('00:05 / 03:20'));
+  assert.ok(!JSON.stringify(data).includes('```'));
 });
-test('one player always reserves a full-width lyric block before, during and after lyrics', () => {
-  const s = { current: { title: 'Track', duration: 200 }, queue: [], resource: { playbackDuration: 5000 }, player: { state: { status: 'playing' } } };
-  const before = panelPayload(s).embeds[0].toJSON();
-  s.lyrics = Object.assign([{ time: 0, text: '中文歌詞' }], { source: '酷狗' });
-  const after = panelPayload(s).embeds[0].toJSON();
-  assert.equal(before.description, after.description); assert.equal(before.fields.length, after.fields.length);
-  const field = embed => embed.fields.find(item => item.name.includes('歌詞'));
-  assert.equal(field(before).value.split('\n').length, field(after).value.split('\n').length);
-  assert.equal(field(before).inline, false); assert.equal(field(after).inline, false);
-  assert.equal(field(after).name, '🎤 歌詞');
-});
-
-test('missing lyrics is explicit without mislabeling an intro or unfinished lookup', () => {
-  const s = { current: { title: 'Track', duration: 200 }, queue: [], resource: { playbackDuration: 1000 }, player: { state: { status: 'playing' } } };
-  const field = () => panelPayload(s).embeds[0].toJSON().fields.find(item => item.name === '🎤 歌詞');
-  s.lyricsStatus = 'loading'; assert.ok(!field().value.includes('沒有'));
-  s.lyricsStatus = 'missing'; const missing = field().value; assert.match(missing, /目前沒有同步歌詞/);
+test('no empty lyric area; missing lyrics is one line and real lyrics use the same player', () => {
+  const s = session(); const field = () => panelPayload(s).embeds[0].toJSON().fields?.find(item => item.name === '🎤 歌詞');
+  s.lyricsStatus = 'loading'; assert.equal(field(), undefined);
+  s.lyricsStatus = 'missing'; assert.equal(field().value, '目前沒有同步歌詞');
+  s.lyricsStatus = 'unavailable'; assert.equal(field().value, '暫時無法取得歌詞');
   s.lyricsStatus = 'ready'; s.lyrics = Object.assign([{ time: 10, text: 'Later' }], { source: 'LRCLIB' });
-  assert.ok(!field().value.includes('沒有')); assert.equal(field().value.split('\n').length, missing.split('\n').length);
+  assert.equal(field().value, '**▶ Later**');
+  s.resource.playbackDuration = 10000;
+  assert.equal(field().value, '**▶ Later**'); assert.equal(field().inline, false);
   assert.equal(field().name, '🎤 歌詞');
-  s.lyrics = null; s.lyricsStatus = 'unavailable'; assert.match(field().value, /暫時無法取得歌詞/);
+});
+test('stop and leave retains its explicit text while transport stays compact', () => {
+  const payload = panelPayload(session());
+  const rows = payload.components.map(row => row.toJSON().components);
+  assert.equal(rows[0].length, 5);
+  const stop = rows.flat().find(button => button.custom_id === 'music:leave');
+  assert.equal(stop.label, '停止並離開');
+  assert.equal(stop.style, 4);
 });

@@ -16,7 +16,7 @@ test('LRC timestamps, repeated lines, offsets, malformed rows and bounds', () =>
 });
 test('lyrics follow exact playback boundaries and recovery offsets', () => {
   const lines = parseLrc(record.syncedLyrics);
-  assert.equal(lyricWindow(lines, 1), null);
+  assert.deepEqual(lyricWindow(lines, 1), { previous: undefined, current: 'First line', next: 'Second line' });
   assert.equal(lyricWindow(lines, 2).current, 'First line');
   assert.deepEqual(lyricWindow(lines, 5), { previous: 'First line', current: 'Second line', next: 'Third line' });
   const s = session(); s.lyrics = lines;
@@ -68,7 +68,7 @@ test('single-line status and inline lyrics escape untrusted text and disappear o
   const embed = panelPayload(s).embeds[0].toJSON();
   assert.match(embed.description, /🔊 音量 \*\*50%\*\* · 🔁 重複：單曲/);
   const field = embed.fields.find(f => f.name.includes('歌詞'));
-  assert.equal(field.inline, false); assert.ok(field.value.includes('@\u200beveryone')); assert.ok(field.value.includes('**hello**'));
+  assert.equal(field.inline, false); assert.ok(field.value.includes('@\u200beveryone')); assert.ok(field.value.includes('\\*\\*hello\\*\\*'));
   assert.ok(field.value.length <= 1024);
-  s.closed = true; assert.ok(!panelPayload(s).embeds[0].toJSON().fields.find(f => f.name.includes('歌詞')).value.includes('hello'));
+  s.closed = true; assert.ok(!panelPayload(s).embeds[0].toJSON().fields?.some(f => f.name.includes('歌詞')));
 });

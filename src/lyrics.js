@@ -28,7 +28,8 @@ export function lyricWindow(lines, elapsed) {
   if (!lines?.length || !Number.isFinite(elapsed)) return null;
   let index = -1;
   for (let n = 0; n < lines.length && lines[n].time <= elapsed; n++) index = n;
-  if (index < 0) return null;
+  // Preview the first line during the intro instead of leaving the panel empty.
+  if (index < 0) index = 0;
   return { previous: lines[index - 1]?.text, current: lines[index].text, next: lines[index + 1]?.text };
 }
 

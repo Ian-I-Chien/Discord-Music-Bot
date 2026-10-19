@@ -27,14 +27,18 @@ export function panelPayload(s, ping = 0, disabled = false) {
   const track = s.current;
   const elapsed = (s.playbackOffset || 0) + (s.resource?.playbackDuration || 0) / 1000;
   const fraction = track?.duration > 0 ? Math.min(1, elapsed / track.duration) : 0;
-  const progress = progressRow(fraction, `${time(elapsed)} / ${time(track?.duration ?? NaN)}`);
+  const progress = progressRow(fraction);
   const now = new EmbedBuilder().setColor(ended ? 0x747f8d : 0xc87941)
     .setTitle(ended ? '播放結束' : !track ? '音樂播放器' : paused ? '已暫停' : '正在播放');
   if (track) {
-    now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}\n\n\`\`\`\n${progress}\n\`\`\``);
+    now.setDescription(`**${title(track)}**\n${escapeMarkdown(String(track.author || 'YouTube').replace(/\s+/g, ' ').slice(0,100))}`);
     if (/^https:\/\//.test(track.thumbnail || '')) now.setThumbnail(track.thumbnail);
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
-  now.setDescription(`${now.toJSON().description}\n\n🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)}`);
+  now.setDescription(`🔊 音量 **${s.volume ?? 50}%** · 🔁 重複：${repeatLabel(s)} · 📋 待播 **${s.queue.filter(item => !item.playlistPending).length}** 首\n\n${now.toJSON().description}`);
+  if (track) now.addFields(
+    { name: '\u200b', value: `\`${progress}\``, inline: true },
+    { name: '\u200b', value: `\`${time(elapsed)} / ${time(track.duration ?? NaN)}\``, inline: true },
+  );
   if (/^https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22}$/.test(track?.spotify?.page || '')) {
     now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page})` });
   }
@@ -42,7 +46,8 @@ export function panelPayload(s, ping = 0, disabled = false) {
   const lyricNotice = !ended && track && !s.lyrics?.length
     ? s.lyricsStatus === 'missing' ? '目前沒有同步歌詞' : s.lyricsStatus === 'unavailable' ? '暫時無法取得歌詞' : ''
     : '';
-  now.addFields({ name: '🎤 歌詞', value: `\`\`\`\n${lyricRows(lyrics, lyricNotice)}\n\`\`\``, inline: false });
+  const lyricContent = lyricRows(lyrics, lyricNotice);
+  if (lyricContent) now.addFields({ name: '🎤 歌詞', value: lyricContent, inline: false });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:volume-down').setLabel('−5').setEmoji('🔉').setStyle(ButtonStyle.Secondary).setDisabled(ended || (s.volume ?? 50) <= 0),
     new ButtonBuilder().setCustomId('music:previous').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
@@ -55,7 +60,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
     repeatButton(s, ended),
   );
   const stop = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music:leave').setEmoji('⏹️').setStyle(ButtonStyle.Danger).setDisabled(ended),
+    new ButtonBuilder().setCustomId('music:leave').setLabel('停止並離開').setEmoji('⏹️').setStyle(ButtonStyle.Danger).setDisabled(ended),
   );
   return { content: '', embeds: [now], components: [row, queueControls, stop], allowedMentions: { parse: [] } };
 }
