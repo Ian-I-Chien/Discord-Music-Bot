@@ -5,6 +5,7 @@ import { resolveTrack, normalizeQuery, playlistUrl, streamPlaylist } from './sou
 import { importPlaylist, cancelPlaylistImports } from './playlist-import.js';
 import { readSpotifyInput, resolveSpotifyTrack } from './spotify.js';
 import { streamSpotifyCollection } from './spotify-collection.js';
+import { shuffledPlaylist } from './shuffle.js';
 import { prefetchNext, takeNextSource, cancelPrefetch } from './prefetch.js';
 import { finishQuietReply, waitForPlayback } from './interaction-reply.js';
 import { syncChannelStatus } from './channel-status.js';
@@ -128,7 +129,7 @@ async function handle(i, action = i.commandName) {
   let s = sessions.get(i.guildId);
   if (s && s.channelId !== channel.id) throw new Error('請加入機器人所在的語音頻道再操作。');
   if (s && !s.current && !s.loading && !s.queue.length) idle(s);
-  if (action === 'play' || action === 'playnext') {
+  if (action === 'play' || action === 'playnext' || action === 'random-play') {
     const me = await i.guild.members.fetchMe();
     if (!i.channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new Error('播放面板需要檢視頻道、傳送訊息與嵌入連結（Embed Links）權限。');
     if (!channel.permissionsFor(me)?.has([PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) throw new Error('機器人需要連線及說話權限。');
@@ -137,6 +138,8 @@ async function handle(i, action = i.commandName) {
     const spotify = spotifyInput?.metadata;
     const collection = spotifyInput && spotifyInput.kind !== 'track' ? spotifyInput : null;
     const list = action === 'playnext' ? null : playlistUrl(query);
+    const random = action === 'random-play';
+    if (random && !collection && !list) throw new Error('請提供 YouTube 歌單／Mix 或 Spotify 歌單／專輯連結。');
     const normalized = spotifyInput?.page || list || normalizeQuery(query);
     const input = normalized.startsWith('ytsearch1:') ? query : normalized;
     if (!s) s = await createSession(i, channel);
@@ -144,15 +147,17 @@ async function handle(i, action = i.commandName) {
     let importReady;
     if (collection) {
       const limit = MAX_QUEUE - s.queue.length;
-      importReady = importPlaylist(s, signal => streamSpotifyCollection(collection.page, limit, { signal,
+      const entries = signal => streamSpotifyCollection(collection.page, limit, { signal, readTotal: !random,
         onInfo: info => { if (!s.closed) { s.spotifyCollectionInfo = info; void updatePanel(s); } },
-      }), {
+      });
+      importReady = importPlaylist(s, random ? signal => shuffledPlaylist(entries, limit, { signal }) : entries, {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
         next: action === 'playnext',
       }).ready;
     } else if (list) {
       const limit = playlistImportLimit(list, s.queue.length);
-      importReady = importPlaylist(s, signal => streamPlaylist(list, limit, { signal }), {
+      const entries = signal => streamPlaylist(list, limit, { signal });
+      importReady = importPlaylist(s, random ? signal => shuffledPlaylist(entries, limit, { signal }) : entries, {
         advance: () => { void advance(s); }, update: () => { void updatePanel(s); },
       }).ready;
     } else {
