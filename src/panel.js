@@ -31,7 +31,7 @@ export function panelPayload(s, ping = 0, disabled = false) {
   } else now.setDescription(ended ? '播放已結束，使用 /play 再次點歌。' : s.loading ? '⏳ 正在取得 YouTube 音源…' : '使用 /play 點歌。');
   now.addFields({ name: '音量', value: `🔊 **${s.volume ?? 50}%**`, inline: true });
   if (/^https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22}$/.test(track?.spotify?.page || '')) {
-    now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page}) · 播放音源：YouTube` });
+    now.addFields({ name: '點歌來源', value: `[Spotify 原曲](${track.spotify.page})` });
   }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('music:previous').setLabel('上一首').setEmoji('⏮️').setStyle(ButtonStyle.Secondary).setDisabled(ended || s.loading || Boolean(s.recovery) || !s.history?.length),
